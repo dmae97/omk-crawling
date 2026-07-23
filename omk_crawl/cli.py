@@ -49,7 +49,8 @@ def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None =
         print(text)
 
 
-def main(argv: list[str] | None = None) -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="omk-crawl",
         description="Smart web crawling toolbox — 6 adapters, auto-escalating router",
@@ -77,7 +78,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
     parser.add_argument("--version", action="version", version="omk-crawl 2.0.0")
+    return parser
 
+
+def main(argv: list[str] | None = None) -> None:
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.tools:

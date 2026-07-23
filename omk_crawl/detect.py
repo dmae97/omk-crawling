@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 from dataclasses import dataclass
 from enum import Flag, auto
+from functools import lru_cache
+from urllib.robotparser import RobotFileParser
 
 from omk_crawl.result import CrawlStatus
 
@@ -169,21 +171,27 @@ def check_robots_txt(url: str, user_agent: str = "*") -> bool:
     Returns True if crawling is allowed (or robots.txt is unavailable).
     Returns False if the URL is explicitly disallowed.
 
-    This is a best-effort check — it fetches and caches robots.txt
-    per domain. Network errors are treated as 'allowed' (fail-open).
+    Results are cached per domain (lru_cache, maxsize=256).
+    Network errors are treated as 'allowed' (fail-open).
     """
-    import urllib.request  # noqa: F401 — needed by RobotFileParser internally
     from urllib.parse import urlparse
-    from urllib.robotparser import RobotFileParser
 
     parsed = urlparse(url)
-    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    rp = _robots_for(f"{parsed.scheme}://{parsed.netloc}")
+    if rp is None:
+        return True  # fail-open: can't read robots.txt → allow
+    return rp.can_fetch(user_agent, url)
+
+
+@lru_cache(maxsize=256)
+def _robots_for(scheme_netloc: str) -> RobotFileParser | None:
+    """Fetch and cache robots.txt for a domain. Returns None on failure."""
+    import urllib.request  # noqa: F401 — needed by RobotFileParser internally
 
     rp = RobotFileParser()
     try:
-        rp.set_url(robots_url)
+        rp.set_url(f"{scheme_netloc}/robots.txt")
         rp.read()
     except Exception:
-        return True  # fail-open: can't read robots.txt → allow
-
-    return rp.can_fetch(user_agent, url)
+        return None
+    return rp

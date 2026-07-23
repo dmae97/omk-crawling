@@ -475,16 +475,194 @@ class TestVerboseLogging:
 
 
 class TestRobotsTxt:
-    def test_check_robots_txt_returns_bool(self):
-        from omk_crawl.detect import check_robots_txt
+    def test_check_robots_txt_returns_bool(self, monkeypatch):
+        from omk_crawl import detect
 
-        # Should not raise, returns bool
-        result = check_robots_txt("https://example.com/")
-        assert isinstance(result, bool)
+        # Stub _robots_for to avoid network
+        monkeypatch.setattr(detect, "_robots_for", lambda sn: None)
+        result = detect.check_robots_txt("https://example.com/")
+        assert result is True  # fail-open
 
-    def test_check_robots_txt_fail_open(self):
+    def test_check_robots_txt_fail_open(self, monkeypatch):
         """Unreachable domain should return True (fail-open)."""
-        from omk_crawl.detect import check_robots_txt
+        from omk_crawl import detect
 
-        result = check_robots_txt("https://this-domain-does-not-exist-12345.invalid/")
+        monkeypatch.setattr(detect, "_robots_for", lambda sn: None)
+        result = detect.check_robots_txt("https://this-domain-does-not-exist-12345.invalid/")
         assert result is True
+
+    def test_check_robots_txt_disallowed(self, monkeypatch):
+        """URL explicitly disallowed by robots.txt returns False."""
+        from unittest.mock import MagicMock
+
+        from omk_crawl import detect
+
+        mock_rp = MagicMock()
+        mock_rp.can_fetch.return_value = False
+        monkeypatch.setattr(detect, "_robots_for", lambda sn: mock_rp)
+        result = detect.check_robots_txt("https://example.com/private")
+        assert result is False
+
+    def test_robots_cache_hit(self, monkeypatch):
+        """_robots_for is lru_cached — second call should not re-fetch."""
+        from omk_crawl import detect
+
+        call_count = 0
+
+        def counting_fetch(scheme_netloc):
+            nonlocal call_count
+            call_count += 1
+            return None
+
+        # Clear cache and replace
+        detect._robots_for.cache_clear()
+        monkeypatch.setattr(detect, "_robots_for", detect.lru_cache(maxsize=256)(counting_fetch))
+        detect.check_robots_txt("https://cached-example.com/a")
+        detect.check_robots_txt("https://cached-example.com/b")
+        assert call_count == 1  # same domain, cached
+
+
+class TestRobotsGating:
+    def test_respect_robots_blocks(self, monkeypatch):
+        """respect_robots=True + disallowed URL → ERROR."""
+        import omk_crawl.router as router_mod
+
+        monkeypatch.setattr(router_mod, "check_robots_txt", lambda url, ua="*": False)
+        router = _router_with([MockOKTool()], respect_robots=True)
+        r = router.crawl("https://example.com/private")
+        assert r.status == CrawlStatus.ERROR
+        assert "robots.txt" in (r.error or "")
+
+    def test_respect_robots_false_allows(self, monkeypatch):
+        """respect_robots=False skips the check entirely."""
+        import omk_crawl.router as router_mod
+
+        # This should never be called
+        def boom(url, ua="*"):
+            raise AssertionError("check_robots_txt should not be called")
+        monkeypatch.setattr(router_mod, "check_robots_txt", boom)
+        router = _router_with([MockOKTool()], respect_robots=False)
+        r = router.crawl("https://example.com")
+        assert r.ok
+
+    def test_tool_missing_before_robots_check(self):
+        """TOOL_MISSING should be returned without hitting robots.txt."""
+        router = SmartRouter(tools=[], respect_robots=True)
+        r = router.crawl("https://example.com")
+        assert r.status == CrawlStatus.TOOL_MISSING
+
+    def test_async_respect_robots_blocks(self, monkeypatch):
+        import omk_crawl.router as router_mod
+
+        monkeypatch.setattr(router_mod, "check_robots_txt", lambda url, ua="*": False)
+        router = _router_with([MockOKTool()], respect_robots=True)
+        r = asyncio.run(router.crawl_async("https://example.com/private"))
+        assert r.status == CrawlStatus.ERROR
+        assert "robots.txt" in (r.error or "")
+
+    def test_async_tool_missing_before_robots(self):
+        router = SmartRouter(tools=[], respect_robots=True)
+        r = asyncio.run(router.crawl_async("https://example.com"))
+        assert r.status == CrawlStatus.TOOL_MISSING
+
+
+class TestEnsureMarkdownMarkitdown:
+    def test_markitdown_success(self, monkeypatch):
+        """markitdown converts HTML → markdown with markdown_source key."""
+        from unittest.mock import MagicMock
+
+        mock_mid = MagicMock()
+        mock_mid.return_value.convert.return_value.text_content = "# Converted"
+        monkeypatch.setitem(
+            __import__("sys").modules, "markitdown",
+            MagicMock(MarkItDown=mock_mid),
+        )
+        r = CrawlResult(url="x", status=CrawlStatus.OK, html="<h1>Hi</h1>")
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown == "# Converted"
+        assert r.metadata.get("markdown_source") == "markitdown"
+
+    def test_markitdown_empty_falls_through(self, monkeypatch):
+        """markitdown returning empty string → falls through to tag-strip."""
+        from unittest.mock import MagicMock
+
+        mock_mid = MagicMock()
+        mock_mid.return_value.convert.return_value.text_content = ""
+        monkeypatch.setitem(
+            __import__("sys").modules, "markitdown",
+            MagicMock(MarkItDown=mock_mid),
+        )
+        r = CrawlResult(url="x", status=CrawlStatus.OK, html="<p>Hello</p>")
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown == "Hello"
+        assert r.metadata.get("markdown_source") == "tag-strip"
+
+    def test_markitdown_exception_falls_through(self, monkeypatch):
+        """markitdown raising RuntimeError → falls through, no crash."""
+        from unittest.mock import MagicMock
+
+        mock_mid = MagicMock()
+        mock_mid.return_value.convert.side_effect = RuntimeError("conversion boom")
+        monkeypatch.setitem(
+            __import__("sys").modules, "markitdown",
+            MagicMock(MarkItDown=mock_mid),
+        )
+        r = CrawlResult(url="x", status=CrawlStatus.OK, html="<p>Safe</p>")
+        SmartRouter._ensure_markdown(r)  # must not raise
+        assert r.markdown == "Safe"
+        assert r.metadata.get("markdown_source") == "tag-strip"
+
+    def test_markitdown_only_script_leaves_none(self, monkeypatch):
+        """markitdown returning empty for script-only HTML → markdown stays None."""
+        from unittest.mock import MagicMock
+
+        mock_mid = MagicMock()
+        mock_mid.return_value.convert.return_value.text_content = ""
+        monkeypatch.setitem(
+            __import__("sys").modules, "markitdown",
+            MagicMock(MarkItDown=mock_mid),
+        )
+        r = CrawlResult(
+            url="x", status=CrawlStatus.OK,
+            html="<script>var x=1;</script><style>.a{}</style>",
+        )
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown is None
+
+
+class TestRateLimitInRetry:
+    def test_rate_limit_called_on_retry(self):
+        """_rate_limit is called before each fetch attempt, including retries."""
+        tool = MockTransientTool(fail_count=1)
+        router = _router_with([tool], max_retries=2, retry_delay=0.01, min_delay=0.0)
+        rate_calls = []
+        router._rate_limit = lambda url: rate_calls.append(url)  # type: ignore[method-assign]
+        router.crawl("https://example.com")
+        # 1 initial + 1 retry = 2 rate limit calls
+        assert len(rate_calls) == 2
+
+
+class TestCLIFlags:
+    def test_no_robots_flag(self):
+        """--no-robots sets respect_robots=False."""
+        from omk_crawl.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["https://example.com", "--no-robots"])
+        assert args.no_robots is True
+
+    def test_min_delay_flag(self):
+        """--min-delay sets the value."""
+        from omk_crawl.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["https://example.com", "--min-delay", "2.0"])
+        assert args.min_delay == 2.0
+
+    def test_min_delay_default(self):
+        """Default min_delay is 0.5."""
+        from omk_crawl.cli import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["https://example.com"])
+        assert args.min_delay == 0.5

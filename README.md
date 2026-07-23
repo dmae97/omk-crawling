@@ -141,6 +141,8 @@ omk-crawl https://example.com --tool curl_cffi   # force specific tool
 omk-crawl https://example.com -o out.md          # save markdown to file
 omk-crawl https://example.com --json             # JSON output
 omk-crawl https://example.com -v                 # verbose escalation log
+omk-crawl https://example.com --no-robots         # skip robots.txt check
+omk-crawl https://example.com --min-delay 2.0     # 2s between same-domain requests
 omk-crawl --diagnose https://example.com         # dry-run: what would we try?
 omk-crawl --tools                                # list installed/missing tools
 omk-crawl report.pdf                             # file → markdown (markitdown)

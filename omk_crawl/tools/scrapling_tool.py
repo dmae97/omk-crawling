@@ -25,7 +25,7 @@ class ScraplingTool(BaseTool):
             page = StealthyFetcher.fetch(
                 url,
                 headless=kwargs.get("headless", True),
-                timeout=kwargs.get("timeout", 30),
+                timeout=kwargs.get("timeout", 30) * 1000,  # scrapling uses ms
             )
 
             html = page.html_content if hasattr(page, "html_content") else str(page)

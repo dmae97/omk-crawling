@@ -93,12 +93,6 @@ class SmartRouter:
 
     def crawl(self, url: str, **kwargs: Any) -> CrawlResult:
         """Synchronous crawl with auto-escalation and retry."""
-        if self.respect_robots and not check_robots_txt(url):
-            return CrawlResult(
-                url=url,
-                status=CrawlStatus.ERROR,
-                error="Blocked by robots.txt. Use respect_robots=False to override.",
-            )
         merged = {**self.tool_kwargs, **kwargs}
         chain = self._get_chain()
 
@@ -111,6 +105,13 @@ class SmartRouter:
                     "No crawling tools installed."
                     f" Try: pip install curl_cffi  (missing: {missing})"
                 ),
+            )
+
+        if self.respect_robots and not check_robots_txt(url):
+            return CrawlResult(
+                url=url,
+                status=CrawlStatus.ERROR,
+                error="Blocked by robots.txt. Use respect_robots=False to override.",
             )
 
         best: CrawlResult | None = None
@@ -164,12 +165,6 @@ class SmartRouter:
 
     async def crawl_async(self, url: str, **kwargs: Any) -> CrawlResult:
         """Async crawl with auto-escalation and retry."""
-        if self.respect_robots and not check_robots_txt(url):
-            return CrawlResult(
-                url=url,
-                status=CrawlStatus.ERROR,
-                error="Blocked by robots.txt. Use respect_robots=False to override.",
-            )
         merged = {**self.tool_kwargs, **kwargs}
         chain = self._get_chain()
 
@@ -178,6 +173,13 @@ class SmartRouter:
                 url=url,
                 status=CrawlStatus.TOOL_MISSING,
                 error="No crawling tools installed. pip install curl_cffi",
+            )
+
+        if self.respect_robots and not check_robots_txt(url):
+            return CrawlResult(
+                url=url,
+                status=CrawlStatus.ERROR,
+                error="Blocked by robots.txt. Use respect_robots=False to override.",
             )
 
         best: CrawlResult | None = None
@@ -249,8 +251,11 @@ class SmartRouter:
         Tries markitdown first (proper HTML→Markdown conversion).
         Falls back to tag-stripping with <script>/<style> removal
         and HTML entity unescaping. If the result is trivial
-        (empty after stripping), leaves markdown as None so that
-        Pipeline.to_markdown() can handle it later.
+        (empty after conversion/stripping), leaves markdown as None
+        so that Pipeline.to_markdown() can handle it later.
+
+        Never raises — all conversion errors are caught and fall
+        through to the tag-strip fallback.
         """
         if r.markdown or not r.html:
             return
@@ -267,13 +272,15 @@ class SmartRouter:
                 f.write(r.html)
                 path = f.name
             try:
-                r.markdown = MarkItDown().convert(path).text_content
-                r.metadata.setdefault("markdown_fallback", "markitdown")
+                text = MarkItDown().convert(path).text_content
+                if text and text.strip():
+                    r.markdown = text
+                    r.metadata.setdefault("markdown_source", "markitdown")
+                    return
             finally:
                 os.unlink(path)
-            return
-        except ImportError:
-            pass
+        except Exception:
+            pass  # markitdown unavailable or conversion failed — fall through
         # Fallback: strip tags
         import html as html_mod
         import re
@@ -290,7 +297,7 @@ class SmartRouter:
         text = html_mod.unescape(text).strip()
         if text:
             r.markdown = text
-            r.metadata.setdefault("markdown_fallback", "tag-strip")
+            r.metadata.setdefault("markdown_source", "tag-strip")
 
     def _log(self, msg: str) -> None:
         if self.verbose:

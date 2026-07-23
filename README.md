@@ -34,31 +34,31 @@
 ### 1. Auto-Escalation (verbose)
 
 <p align="center">
-  <img src="assets/demos/01-auto-escalation.svg" alt="omk-crawl auto-escalation demo" width="100%" />
+  <img src="assets/demos/01-auto-escalation.gif" alt="omk-crawl auto-escalation demo" width="100%" />
 </p>
 
 ### 2. Tool Discovery
 
 <p align="center">
-  <img src="assets/demos/02-tool-discovery.svg" alt="omk-crawl tool discovery demo" width="100%" />
+  <img src="assets/demos/02-tool-discovery.gif" alt="omk-crawl tool discovery demo" width="100%" />
 </p>
 
 ### 3. Diagnose (dry-run)
 
 <p align="center">
-  <img src="assets/demos/03-diagnose.svg" alt="omk-crawl diagnose demo" width="100%" />
+  <img src="assets/demos/03-diagnose.gif" alt="omk-crawl diagnose demo" width="100%" />
 </p>
 
 ### 4. JSON Output
 
 <p align="center">
-  <img src="assets/demos/04-json-output.svg" alt="omk-crawl JSON output demo" width="100%" />
+  <img src="assets/demos/04-json-output.gif" alt="omk-crawl JSON output demo" width="100%" />
 </p>
 
 ### 5. Python API
 
 <p align="center">
-  <img src="assets/demos/05-python-api.svg" alt="omk-crawl Python API demo" width="100%" />
+  <img src="assets/demos/05-python-api.gif" alt="omk-crawl Python API demo" width="100%" />
 </p>
 
 ---

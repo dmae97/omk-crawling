@@ -135,28 +135,27 @@ def detect_block(html: str | None, status_code: int | None) -> Detection:
 def detection_to_status(det: Detection) -> CrawlStatus:
     """Map a Detection to the appropriate CrawlStatus.
 
-    Priority: HTTP error > TLS block > JS required > generic block > OK.
+    Priority: block signals > HTTP client/server errors > OK.
+    Block signals (CF, WAF, TLS, JS) take precedence over raw HTTP codes
+    because anti-bot systems commonly use 403/503 for challenge pages.
     """
-    sc = det.status_code
-    # HTTP-level errors that are NOT blocking (don't escalate)
-    if sc is not None and sc >= 400:
-        if sc == 429:
-            return CrawlStatus.BLOCKED  # rate limit — might retry
-        if sc == 401:
-            return CrawlStatus.ERROR  # auth — no point escalating
-        if sc in (404, 405, 410):
-            return CrawlStatus.ERROR  # client error — not a block
-        if sc >= 500:
-            return CrawlStatus.ERROR  # server error — not a block
-        # 403 / other 4xx with blocking markers → continue to block checks
-    # Blocking detection
+    # 1. Blocking detection FIRST — anti-bot challenges use 403/503
     if BlockType.TLS_FINGERPRINT in det.block:
         return CrawlStatus.TLS_BLOCKED
     if BlockType.JS_REQUIRED in det.block and det.needs_browser:
         return CrawlStatus.JS_REQUIRED
     if det.block.value != 0:
         return CrawlStatus.BLOCKED
-    # Final guard: any 4xx/5xx not caught above
+
+    # 2. HTTP-level errors with NO blocking signal — genuine errors
+    sc = det.status_code
     if sc is not None and sc >= 400:
-        return CrawlStatus.ERROR
+        if sc in (404, 405, 410):
+            return CrawlStatus.ERROR  # client error — not a block
+        if sc == 401:
+            return CrawlStatus.ERROR  # auth — no point escalating
+        if sc >= 500:
+            return CrawlStatus.ERROR  # server error — not a block
+        return CrawlStatus.ERROR  # other 4xx without markers
+
     return CrawlStatus.OK

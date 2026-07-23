@@ -258,11 +258,32 @@ class TestDetectionRouting:
         d = Detection(status_code=500)
         assert detection_to_status(d) == CrawlStatus.ERROR
 
-    def test_detection_to_status_503(self):
+    def test_detection_to_status_503_plain(self):
+        """503 with no blocking markers is a server error."""
         from omk_crawl.detect import Detection, detection_to_status
 
         d = Detection(status_code=503)
         assert detection_to_status(d) == CrawlStatus.ERROR
+
+    def test_detection_to_status_503_cloudflare(self):
+        """CF 503 challenge must be BLOCKED, not ERROR — escalation must continue."""
+        from omk_crawl.detect import BlockType, Detection, detection_to_status
+
+        d = Detection(
+            status_code=503,
+            block=BlockType.CLOUDFLARE,
+            needs_stealth=True,
+            confidence=0.9,
+            detail="Cloudflare challenge detected",
+        )
+        assert detection_to_status(d) == CrawlStatus.BLOCKED
+
+    def test_detection_to_status_403_waf(self):
+        """403 with WAF markers must be BLOCKED, not ERROR."""
+        from omk_crawl.detect import BlockType, Detection, detection_to_status
+
+        d = Detection(status_code=403, block=BlockType.WAF)
+        assert detection_to_status(d) == CrawlStatus.BLOCKED
 
     def test_detection_to_status_200_clean(self):
         from omk_crawl.detect import Detection, detection_to_status
@@ -286,4 +307,57 @@ class TestDetectionRouting:
         from omk_crawl.detect import BlockType, Detection, detection_to_status
 
         d = Detection(status_code=401, block=BlockType.AUTH_REQUIRED)
-        assert detection_to_status(d) == CrawlStatus.ERROR
+        assert detection_to_status(d) == CrawlStatus.BLOCKED
+
+    def test_detect_block_cf_503_integration(self):
+        """End-to-end: detect_block on CF 503 HTML → detection_to_status → BLOCKED."""
+        from omk_crawl.detect import detect_block, detection_to_status
+
+        html = '<div id="cf-browser-verification">Checking your browser...</div>'
+        det = detect_block(html, 503)
+        assert detection_to_status(det) == CrawlStatus.BLOCKED
+
+
+class TestEnsureMarkdown:
+    def test_strips_script_and_style(self):
+        r = CrawlResult(
+            url="x",
+            status=CrawlStatus.OK,
+            html=(
+                "<style>body{color:red}</style>"
+                "<script>var x=1;alert('x')</script>"
+                "<p>Hello &amp; bye</p>"
+            ),
+        )
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown is not None
+        assert "color:red" not in r.markdown
+        assert "alert" not in r.markdown
+        assert "Hello & bye" in r.markdown
+
+    def test_does_not_overwrite_existing_markdown(self):
+        r = CrawlResult(url="x", status=CrawlStatus.OK, html="<p>hi</p>", markdown="# hi")
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown == "# hi"
+
+    def test_empty_html_leaves_markdown_none(self):
+        r = CrawlResult(url="x", status=CrawlStatus.OK, html="")
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown is None
+
+    def test_only_script_leaves_markdown_none(self):
+        """If HTML is only script/style, markdown stays None (not garbage)."""
+        r = CrawlResult(
+            url="x", status=CrawlStatus.OK,
+            html="<script>var x=1;</script><style>.a{}</style>",
+        )
+        SmartRouter._ensure_markdown(r)
+        assert r.markdown is None
+
+
+class TestBogusTool:
+    def test_unknown_tool_returns_tool_missing(self):
+        """--tool bogus should not crash with ValueError."""
+        router = SmartRouter(tools=["bogus_tool"])
+        r = router.crawl("https://example.com")
+        assert r.status == CrawlStatus.TOOL_MISSING

@@ -105,6 +105,14 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0 if r.ok else 1)
 
     # Web crawl with auto-escalation
+    if args.verbose:
+        import logging
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="  [omk-crawl] %(message)s",
+        )
+
     r = crawl(args.url, tool=args.tool, verbose=args.verbose)
 
     if args.verbose:

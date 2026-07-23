@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omk-crawl"
+version = "2.0.0"
+description = "Smart web crawling toolbox — auto-routes across 10 tools with escalation"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "omk-crawling contributors" }]
+keywords = ["crawl", "scrape", "extract", "markdown", "anti-bot", "tls-fingerprint"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+
+# Core (zero-dep router + CLI)
+dependencies = []
+
+[project.optional-dependencies]
+# Each tool is optional — install what you need
+curl = ["curl_cffi>=0.15"]
+crawl4ai = ["crawl4ai>=0.9"]
+scrapling = ["scrapling>=0.4"]
+scrapy = ["scrapy>=2.17"]
+crawlee = ["crawlee[all]>=1.8"]
+browser = ["browser-use>=0.13"]
+autoscraper = ["autoscraper>=1.1"]
+markitdown = ["markitdown[all]>=0.1"]
+# All tools
+all = [
+    "curl_cffi>=0.15",
+    "crawl4ai>=0.9",
+    "scrapling>=0.4",
+    "scrapy>=2.17",
+    "crawlee[all]>=1.8",
+    "browser-use>=0.13",
+    "autoscraper>=1.1",
+    "markitdown[all]>=0.1",
+]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
+
+[project.scripts]
+omk-crawl = "omk_crawl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/user/omk-crawling"
+Repository = "https://github.com/user/omk-crawling"
+Issues = "https://github.com/user/omk-crawling/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["omk_crawl"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

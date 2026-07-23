@@ -1,24 +1,111 @@
 # omk-crawling
 
-> **웹·데이터 수집/추출 툴박스** — 10개 도구를 목적별로 라우팅하는 OMK 스킬.
+> **웹·데이터 수집/추출 툴박스** — 10개 도구를 목적별로 라우팅하는 OMK 스킬 + Python 패키지.
 > 크롤링은 하나의 도구로 끝나지 않는다. 바이트 확보 → 순회 → 브라우저 조작 → 구조화 → 변환 → 모바일.
+
+```
+omk-crawl https://example.com
+```
+
+한 줄이면 → TLS 감지 → 자동 에스컬레이션 → 통합 결과.
+
+## Architecture
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │            SmartRouter                   │
+                    │  detect → route → escalate → result     │
+                    └──────────┬──────────────────────────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+   ① curl_cffi          ② crawl4ai          ③ scrapling
+   TLS/JA3 위장          브라우저 렌더         스텔스 브라우저
+   0ms browser           + Markdown           + anti-bot
+          │                    │                    │
+          └────────────────────┼────────────────────┘
+                               ▼ (still blocked?)
+                        ④ browser-use
+                        LLM 에이전트가 운전
+                               │
+                               ▼
+                        CrawlResult (unified)
+                        .markdown .html .extracted
+```
+
+**Escalation chain**: `curl_cffi` → `crawl4ai` → `scrapling` → `browser-use`
+각 단계에서 응답을 분석(detect.py)하고, 차단되면 다음 도구로 자동 전환.
+
+## Install
+
+```bash
+# Core (zero-dep router + CLI)
+pip install omk-crawl
+
+# Pick your tools
+pip install omk-crawl[curl]        # curl_cffi (TLS fingerprint)
+pip install omk-crawl[crawl4ai]    # crawl4ai (browser + markdown)
+pip install omk-crawl[scrapling]   # scrapling (stealth)
+pip install omk-crawl[browser]     # browser-use (LLM agent)
+pip install omk-crawl[all]         # everything
+```
 
 ## Quick Start
 
+### CLI
+
 ```bash
-# 필요한 도구만 설치
-pip install -U crawl4ai && crawl4ai-setup   # 웹→Markdown·딥크롤·MCP
-pip install scrapy 'crawlee[all]' browser-use autoscraper 'markitdown[all]' curl_cffi scrapling
+omk-crawl https://example.com                    # auto-escalate
+omk-crawl https://example.com --tool curl_cffi   # force tool
+omk-crawl https://example.com -o out.md          # save markdown
+omk-crawl https://example.com --json             # JSON output
+omk-crawl https://example.com -v                 # verbose escalation
+omk-crawl --diagnose https://example.com         # dry-run: what would we try?
+omk-crawl --tools                                # list installed tools
+omk-crawl report.pdf                             # file → markdown (markitdown)
 ```
+
+### Python
+
+```python
+from omk_crawl import crawl
+
+# One-liner with auto-escalation
+r = crawl("https://example.com")
+print(r.markdown)       # LLM-ready markdown
+print(r.summary())      # [ok] https://example.com | via curl_cffi | HTTP 200 | 42ms
+
+# Verbose escalation
+r = crawl("https://protected-site.com", verbose=True)
+#   [omk-crawl] [1/4] Trying curl_cffi...
+#   [omk-crawl]   ✗ curl_cffi: blocked — TLS fingerprint block
+#   [omk-crawl] [2/4] Trying crawl4ai...
+#   [omk-crawl]   ✓ crawl4ai succeeded (1204ms)
+
+# Force specific tool
+r = crawl("https://example.com", tool="scrapling")
+
+# Pipeline: fetch → extract → convert
+from omk_crawl.pipeline import Pipeline
+result = (
+    Pipeline()
+    .fetch()
+    .extract_css("div.product", {"title": "h2", "price": ".price"})
+    .to_markdown()
+    .run("https://shop.example.com")
+)
+print(result.extracted)  # [{"title": "...", "price": "..."}]
+```
+
+### Async
 
 ```python
 import asyncio
-from crawl4ai import AsyncWebCrawler
+from omk_crawl import crawl_async
 
 async def main():
-    async with AsyncWebCrawler() as crawler:
-        r = await crawler.arun("https://example.com")
-        print(r.markdown)
+    r = await crawl_async("https://example.com")
+    print(r.markdown)
 
 asyncio.run(main())
 ```
@@ -43,21 +130,36 @@ Full decision tree: [`references/routing.md`](references/routing.md)
 ## Repo Structure
 
 ```
-SKILL.md              # OMK skill definition (routing + quick-ref)
-NOTICE.md             # Licenses + shoutouts to all 11 upstream projects
-LICENSE.txt           # Apache-2.0 (+ crawl4ai attribution addendum)
-CHANGELOG.md          # Version history
-references/
-  routing.md          # Cross-tool decision tree
-  choosing.md         # crawl4ai internal mode selection
-  extraction.md       # Markdown & structured extraction
-  deep-crawl.md       # Deep crawl · adaptive · batch
-  docker-mcp.md       # Docker server · REST · MCP
-  cli.md              # crwl CLI reference
-  tools/              # Per-tool deep-dive (10 files)
-examples/             # Runnable Python examples (7 files)
-scripts/
-  check-versions.sh   # Upstream version drift checker
+omk_crawl/              # Python package
+  __init__.py           # Public API: crawl(), CrawlResult
+  router.py             # SmartRouter — auto-detect + escalate
+  detect.py             # Block detection (TLS, CF, JS, WAF)
+  result.py             # Unified CrawlResult dataclass
+  pipeline.py           # Composable fetch → extract → convert
+  cli.py                # CLI entry point (omk-crawl)
+  tools/                # Tool adapters (6 adapters)
+    base.py             # BaseTool ABC
+    curl_cffi_tool.py   # ① TLS fingerprint
+    crawl4ai_tool.py    # ② Browser + Markdown
+    scrapling_tool.py   # ③ Stealth
+    browser_use_tool.py # ④ LLM agent
+    autoscraper_tool.py # Example-based extraction
+    markitdown_tool.py  # File → Markdown
+tests/                  # 27 tests (pytest)
+references/             # Per-tool deep-dive docs (14 files)
+examples/               # Runnable examples (7 files)
+scripts/                # check-versions.sh
+SKILL.md                # OMK skill definition
+NOTICE.md               # Licenses + shoutouts to all 11 projects
+```
+
+## Development
+
+```bash
+pip install -e ".[all,dev]"
+pytest tests/ -v                    # 27 tests
+bash scripts/check-versions.sh      # upstream version drift
+ruff check omk_crawl/               # lint
 ```
 
 ## Shoutouts 🙏

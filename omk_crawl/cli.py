@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dry-run: show what tools would be tried",
     )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
-    parser.add_argument("--version", action="version", version="omk-crawl 2.0.0")
+    parser.add_argument("--version", action="version", version="omk-crawl 2.0.1")
     return parser
 
 

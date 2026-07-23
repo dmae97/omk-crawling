@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omk-crawl"
-version = "2.0.0"
+version = "2.0.1"
 description = "Smart web crawling toolbox — 6 adapters, auto-escalating router"
 readme = "README.md"
 license = "Apache-2.0"

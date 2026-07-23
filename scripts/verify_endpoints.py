@@ -11,7 +11,6 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -36,7 +35,10 @@ def check(label: str, fn, *, expect: str = "any") -> dict:
             result["elapsed_ms"] = round(elapsed * 1000)
             result["label"] = label
             return result
-        return {"label": label, "ok": True, "elapsed_ms": round(elapsed * 1000), "detail": str(result)[:100]}
+        return {
+            "label": label, "ok": True, "elapsed_ms": round(elapsed * 1000),
+            "detail": str(result)[:100],
+        }
     except Exception as exc:
         return {"label": label, "ok": False, "error": str(exc)[:150],
                 "elapsed_ms": round((time.monotonic() - t0) * 1000)}
@@ -84,8 +86,13 @@ def main() -> None:
         r = cffi.get("https://search-gateway.baemin.com/v1/search",
                      params={"query": "치킨", "lat": 37.49, "lng": 127.02},
                      impersonate="chrome124", timeout=8)
-        return {"ok": True, "status": r.status_code,
-                "detail": "403 WAF (expected without auth)" if r.status_code == 403 else f"HTTP {r.status_code}"}
+        return {
+            "ok": True, "status": r.status_code,
+            "detail": (
+                "403 WAF (expected without auth)" if r.status_code == 403
+                else f"HTTP {r.status_code}"
+            ),
+        }
     results.append(check("배민 search-gateway /v1/search", bm_search))
 
     # ── 4. Baemin webview (expect 200 HTML) ──
@@ -179,7 +186,13 @@ def main() -> None:
     # ── 11. Playwright availability ──
     def test_pw():
         ready = ensure_playwright()
-        return {"ok": True, "detail": "installed" if ready else "not installed (run: playwright install chromium)"}
+        return {
+            "ok": True,
+            "detail": (
+                "installed" if ready
+                else "not installed (run: playwright install chromium)"
+            ),
+        }
     results.append(check("Playwright chromium", test_pw))
 
     # ── 12. BaeminClient integration ──
@@ -199,8 +212,13 @@ def main() -> None:
             return {"ok": False, "detail": r.error[:80]}
         items = cafe.normalize_articles(r.data)
         cafe.close()
-        return {"ok": len(items) > 0, "status": r.status_code,
-                "detail": f"{len(items)} articles, first='{items[0]['subject'][:20]}'" if items else "empty"}
+        return {
+            "ok": len(items) > 0, "status": r.status_code,
+            "detail": (
+                f"{len(items)} articles, first='{items[0]['subject'][:20]}'"
+                if items else "empty"
+            ),
+        }
     results.append(check("네이버 카페 게시글 목록 (no-login REST)", test_cafe_list))
 
     # ── 14. Naver Cafe notices ──

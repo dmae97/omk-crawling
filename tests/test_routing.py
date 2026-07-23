@@ -6,15 +6,14 @@ from typing import Any
 
 from omk_crawl.detect import BlockType
 from omk_crawl.result import CrawlResult, CrawlStatus
+from omk_crawl.router import SmartRouter
 from omk_crawl.routing import (
     CONFIDENCE_THRESHOLD,
     is_auth_block,
     preferred_order,
     reorder_tools,
 )
-from omk_crawl.router import SmartRouter
 from omk_crawl.tools.base import BaseTool
-
 
 # --- preferred_order: the routing table -------------------------------------
 

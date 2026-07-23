@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Render asciinema .cast files to static SVG terminal screenshots."""
-import json
-import sys
 import html as html_mod
+import json
 from pathlib import Path
 
 BG = "#1a1b26"
@@ -64,23 +63,29 @@ def render_svg(lines: list[str], title: str, cols: int = 80) -> str:
     title_h = 32
     width = cols * 8.4 + pad_x * 2
     height = len(lines) * line_h + pad_y + title_h + 16
-    
+
     # Title bar dots
     dots = ""
     for i, color in enumerate(["#f7768e", "#e0af68", "#9ece6a"]):
         dots += f'<circle cx="{pad_x + 8 + i * 20}" cy="{title_h // 2 + 4}" r="6" fill="{color}"/>'
-    
+
     # Title text
-    title_text = f'<text x="{width // 2}" y="{title_h // 2 + 9}" text-anchor="middle" fill="#565f89" font-size="12" font-family="{FONT}">{html_mod.escape(title)}</text>'
-    
+    title_text = (
+        f'<text x="{width // 2}" y="{title_h // 2 + 9}" text-anchor="middle" '
+        f'fill="#565f89" font-size="12" font-family="{FONT}">{html_mod.escape(title)}</text>'
+    )
+
     # Content lines
     text_lines = ""
     for i, line in enumerate(lines):
         y = title_h + pad_y + i * line_h
         colored = colorize(line[:cols])
-        text_lines += f'<text x="{pad_x}" y="{y}" font-size="13" font-family="{FONT}">{colored}</text>\n'
-    
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}" width="{width:.0f}">
+        text_lines += (
+            f'<text x="{pad_x}" y="{y}" font-size="13" font-family="{FONT}">{colored}</text>\n'
+        )
+
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}"
+     width="{width:.0f}">
   <rect width="100%" height="100%" rx="10" fill="{BG}"/>
   <rect width="100%" height="{title_h}" rx="10" fill="{TITLE_BG}"/>
   <rect y="{title_h - 10}" width="100%" height="10" fill="{TITLE_BG}"/>
@@ -95,9 +100,10 @@ def main():
         ("assets/demos/02.cast", "02-tool-discovery.svg", "omk-crawl --tools"),
         ("assets/demos/03.cast", "03-diagnose.svg", "omk-crawl --diagnose https://example.com"),
         ("assets/demos/04.cast", "04-json-output.svg", "omk-crawl https://example.com --json"),
-        ("assets/demos/05.cast", "05-python-api.svg", "python3 -c \"from omk_crawl import crawl; ...\""),
+        ("assets/demos/05.cast", "05-python-api.svg",
+         "python3 -c \"from omk_crawl import crawl; ...\""),
     ]
-    
+
     for cast_path, svg_name, title in demos:
         if not Path(cast_path).exists():
             print(f"  SKIP {cast_path} (not found)")

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from omk_crawl.result import CrawlStatus
-from omk_crawl.tools.base import COMMON_KWARGS, BaseTool
+from omk_crawl.tools.base import COMMON_KWARGS
 from omk_crawl.tools.browser_use_tool import BrowserUseTool
 from omk_crawl.tools.crawl4ai_tool import Crawl4aiTool
 from omk_crawl.tools.curl_cffi_tool import CurlCffiTool
@@ -38,8 +37,6 @@ class TestCapabilitiesDeclared:
 
 class TestUnsupportedReporting:
     def test_unsupported_features_flags_passed_but_unsupported(self):
-        curl = CurlCffiTool()  # no js_render
-        flags = curl.unsupported_features({"js_render": True, "timeout": 10})
         # js_render not a COMMON_KWARGS key, so not flagged; pass a common one:
         # crawl4ai lacks proxy/cookies
         c4 = Crawl4aiTool()

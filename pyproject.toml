@@ -52,9 +52,9 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
 omk-crawl = "omk_crawl.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/user/omk-crawling"
-Repository = "https://github.com/user/omk-crawling"
-Issues = "https://github.com/user/omk-crawling/issues"
+Homepage = "https://github.com/dmae97/omk-crawling"
+Repository = "https://github.com/dmae97/omk-crawling"
+Issues = "https://github.com/dmae97/omk-crawling/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["omk_crawl"]

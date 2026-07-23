@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/user/omk-crawling/blob/main/LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-00d7ff?style=for-the-badge" /></a>
+  <a href="https://github.com/dmae97/omk-crawling/blob/main/LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-00d7ff?style=for-the-badge" /></a>
   <a href="https://pypi.org/project/omk-crawl/"><img alt="PyPI" src="https://img.shields.io/badge/pypi-omk--crawl-ff2d95?style=for-the-badge&logo=pypi&logoColor=white" /></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=for-the-badge&logo=python&logoColor=white" />
   <img alt="Tools" src="https://img.shields.io/badge/tools-10-success?style=for-the-badge" />
@@ -18,9 +18,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/user/omk-crawling/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/user/omk-crawling?style=social" /></a>
-  <a href="https://github.com/user/omk-crawling/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/user/omk-crawling?style=social" /></a>
-  <a href="https://github.com/user/omk-crawling/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/user/omk-crawling?style=social" /></a>
+  <a href="https://github.com/dmae97/omk-crawling/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/dmae97/omk-crawling?style=social" /></a>
+  <a href="https://github.com/dmae97/omk-crawling/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/dmae97/omk-crawling?style=social" /></a>
+  <a href="https://github.com/dmae97/omk-crawling/issues"><img alt="GitHub issues" src="https://img.shields.io/github/issues/dmae97/omk-crawling?style=social" /></a>
 </p>
 
 <p align="center">
@@ -72,7 +72,7 @@ curl_cffi (0ms browser) → crawl4ai (render) → scrapling (stealth) → browse
 ### As OMK Skill (git clone + one-liner)
 
 ```bash
-git clone https://github.com/user/omk-crawling.git
+git clone https://github.com/dmae97/omk-crawling.git
 cd omk-crawling
 ./install.sh              # symlink (dev mode, edits reflect instantly)
 ./install.sh --copy       # stable copy
@@ -240,11 +240,11 @@ Apache-2.0. See [LICENSE.txt](LICENSE.txt) and [NOTICE.md](NOTICE.md).
 ## Star History
 
 <p align="center">
-  <a href="https://star-history.com/#user/omk-crawling&Date">
+  <a href="https://star-history.com/#dmae97/omk-crawling&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=user/omk-crawling&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=user/omk-crawling&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=user/omk-crawling&type=Date" width="100%" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=dmae97/omk-crawling&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=dmae97/omk-crawling&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=dmae97/omk-crawling&type=Date" width="100%" />
     </picture>
   </a>
 </p>

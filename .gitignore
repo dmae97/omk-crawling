@@ -20,6 +20,12 @@ apify_storage/
 *-model/
 *.json.bak
 
+# Reverse-engineering artifacts (APK + extracted DEX, not for redistribution)
+apk/
+
+# Local showcase renders / captures
+gpt-image-2-output/
+
 # OS
 .DS_Store
 Thumbs.db

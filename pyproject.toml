@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omk-crawl"
-version = "2.0.1"
-description = "Smart web crawling toolbox — 6 adapters, auto-escalating router"
+version = "2.4.0"
+description = "Smart web crawling toolbox — auto-escalating router, adaptive API discovery, TLS rotation, Naver/Baemin clients"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
@@ -36,6 +36,14 @@ browser = ["browser-use>=0.13,<1"]
 autoscraper = ["autoscraper>=1.1,<2"]
 markitdown = ["markitdown[all]>=0.1,<1"]
 selectolax = ["selectolax>=0.3,<1"]
+# Target clients (Naver Cafe/Land, Baemin) — TLS impersonation + parsing + rendering
+targets = [
+    "curl_cffi>=0.15,<1",
+    "beautifulsoup4>=4.12,<5",
+    "charset-normalizer>=3,<4",
+    "httpx>=0.27,<1",
+    "playwright>=1.40,<2",
+]
 # All tools
 all = [
     "curl_cffi>=0.15,<1",
@@ -47,6 +55,10 @@ all = [
     "autoscraper>=1.1,<2",
     "markitdown[all]>=0.1,<1",
     "selectolax>=0.3,<1",
+    "beautifulsoup4>=4.12,<5",
+    "charset-normalizer>=3,<4",
+    "httpx>=0.27,<1",
+    "playwright>=1.40,<2",
 ]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
 

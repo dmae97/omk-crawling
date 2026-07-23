@@ -1,13 +1,28 @@
-# omk-crawling
+<p align="center">
+  <img src="assets/omk-crawling-hero.jpeg" alt="OMK-Crawling — Cyberpunk anime girl at multi-monitor crawling workstation, neon teal and magenta Night City aesthetic" width="100%" />
+</p>
 
-> **웹·데이터 수집/추출 툴박스** — 10개 도구를 목적별로 라우팅하는 OMK 스킬 + Python 패키지.
-> 크롤링은 하나의 도구로 끝나지 않는다. 바이트 확보 → 순회 → 브라우저 조작 → 구조화 → 변환 → 모바일.
+<h1 align="center">omk-crawling</h1>
 
-```
-omk-crawl https://example.com
-```
+<p align="center">
+  <strong>웹·데이터 수집/추출 툴박스 — 10개 도구, 하나의 라우터.</strong><br/>
+  바이트 확보 → 순회 → 브라우저 조작 → 구조화 → 변환 → 모바일.
+</p>
 
-한 줄이면 → TLS 감지 → 자동 에스컬레이션 → 통합 결과.
+<p align="center">
+  <a href="https://github.com/user/omk-crawling/blob/main/LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-00d7ff?style=flat-square" /></a>
+  <a href="https://pypi.org/project/omk-crawl/"><img alt="PyPI" src="https://img.shields.io/badge/pypi-omk--crawl-ff2d95?style=flat-square" /></a>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-0a0e1a?style=flat-square" />
+  <img alt="Tools" src="https://img.shields.io/badge/tools-10-00d7ff?style=flat-square" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-27%20passed-brightgreen?style=flat-square" />
+  <a href="https://github.com/user/omk-crawling"><img alt="Stars" src="https://img.shields.io/github/stars/user/omk-crawling?style=flat-square&label=%E2%98%85" /></a>
+</p>
+
+<p align="center">
+  <code>omk-crawl https://example.com</code> — 한 줄이면 TLS 감지 → 자동 에스컬레이션 → 통합 결과.
+</p>
+
+---
 
 ## Architecture
 
@@ -34,7 +49,9 @@ omk-crawl https://example.com
 ```
 
 **Escalation chain**: `curl_cffi` → `crawl4ai` → `scrapling` → `browser-use`
-각 단계에서 응답을 분석(detect.py)하고, 차단되면 다음 도구로 자동 전환.
+각 단계에서 응답을 분석(`detect.py`)하고, 차단되면 다음 도구로 자동 전환.
+
+---
 
 ## Install
 
@@ -61,6 +78,8 @@ pip install omk-crawl[scrapling]   # scrapling (stealth)
 pip install omk-crawl[browser]     # browser-use (LLM agent)
 pip install omk-crawl[all]         # everything
 ```
+
+---
 
 ## Quick Start
 
@@ -96,9 +115,13 @@ r = crawl("https://protected-site.com", verbose=True)
 
 # Force specific tool
 r = crawl("https://example.com", tool="scrapling")
+```
 
-# Pipeline: fetch → extract → convert
+### Pipeline
+
+```python
 from omk_crawl.pipeline import Pipeline
+
 result = (
     Pipeline()
     .fetch()
@@ -122,6 +145,8 @@ async def main():
 asyncio.run(main())
 ```
 
+---
+
 ## Tool Router
 
 | Need | Tool | Layer |
@@ -139,6 +164,8 @@ asyncio.run(main())
 
 Full decision tree: [`references/routing.md`](references/routing.md)
 
+---
+
 ## Repo Structure
 
 ```
@@ -150,20 +177,17 @@ omk_crawl/              # Python package
   pipeline.py           # Composable fetch → extract → convert
   cli.py                # CLI entry point (omk-crawl)
   tools/                # Tool adapters (6 adapters)
-    base.py             # BaseTool ABC
-    curl_cffi_tool.py   # ① TLS fingerprint
-    crawl4ai_tool.py    # ② Browser + Markdown
-    scrapling_tool.py   # ③ Stealth
-    browser_use_tool.py # ④ LLM agent
-    autoscraper_tool.py # Example-based extraction
-    markitdown_tool.py  # File → Markdown
 tests/                  # 27 tests (pytest)
 references/             # Per-tool deep-dive docs (14 files)
 examples/               # Runnable examples (7 files)
 scripts/                # check-versions.sh
+assets/                 # Hero image
 SKILL.md                # OMK skill definition
 NOTICE.md               # Licenses + shoutouts to all 11 projects
+install.sh              # One-liner skill installer
 ```
+
+---
 
 ## Development
 
@@ -173,6 +197,8 @@ pytest tests/ -v                    # 27 tests
 bash scripts/check-versions.sh      # upstream version drift
 ruff check omk_crawl/               # lint
 ```
+
+---
 
 ## Shoutouts 🙏
 
@@ -191,6 +217,8 @@ Built on the shoulders of 11 amazing projects. See [NOTICE.md](NOTICE.md) for fu
 | 9 | [scrcpy](https://github.com/Genymobile/scrcpy) | Apache-2.0 | Android mirror/control |
 | 10 | [scrapling](https://github.com/d4vinci/Scrapling) | BSD-3-Clause | Stealth scraping |
 | 11 | insane-search | OMK | Multi-source deep search |
+
+---
 
 ## License
 

@@ -61,6 +61,12 @@
   <img src="assets/demos/05-python-api.gif" alt="omk-crawl Python API demo" width="100%" />
 </p>
 
+### 6. Headless Browser Test (Playwright + Chrome)
+
+<p align="center">
+  <img src="assets/demos/06-browser-test.gif" alt="omk-crawl headless browser test — Playwright Chrome renders HN, extracts 30 stories, screenshots, then cross-checks with SmartRouter" width="100%" />
+</p>
+
 ---
 
 ## Why omk-crawling?

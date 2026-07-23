@@ -38,6 +38,18 @@ omk-crawl https://example.com
 
 ## Install
 
+### As OMK Skill (git clone + one-liner)
+
+```bash
+git clone https://github.com/user/omk-crawling.git
+cd omk-crawling
+./install.sh              # symlink (개발용, 수정 즉시 반영)
+./install.sh --copy       # copy (안정적)
+./install.sh --uninstall  # 제거
+```
+
+### As Python Package
+
 ```bash
 # Core (zero-dep router + CLI)
 pip install omk-crawl

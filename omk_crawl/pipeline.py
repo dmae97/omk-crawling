@@ -37,7 +37,7 @@ class Pipeline:
         return self
 
     def extract_css(self, base: str, fields: dict[str, str]) -> Pipeline:
-        """Step 2: CSS extraction on HTML (requires crawl4ai or scrapling)."""
+        """Step 2: CSS extraction on HTML (requires selectolax)."""
         def _extract(r: CrawlResult) -> CrawlResult:
             if not r.html:
                 r.error = "No HTML to extract from"
@@ -56,7 +56,7 @@ class Pipeline:
                 r.extracted = rows
                 r.metadata["extract_count"] = len(rows)
             except ImportError:
-                # Fallback: regex-based extraction
+                # selectolax not installed — no extraction possible
                 r.metadata["extract_note"] = "pip install selectolax for CSS extraction"
             return r
         self.steps.append(_extract)

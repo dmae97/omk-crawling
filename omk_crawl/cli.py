@@ -52,7 +52,7 @@ def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None =
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="omk-crawl",
-        description="Smart web crawling toolbox — auto-routes across 10 tools",
+        description="Smart web crawling toolbox — 6 adapters, auto-escalating router",
         epilog=(
             "This product uses Crawl4AI"
             " (https://github.com/unclecode/crawl4ai) for web data extraction."

@@ -33,7 +33,7 @@ class BaseTool(abc.ABC):
         """Async fetch. Default: run sync in executor."""
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: self.fetch(url, **kwargs))
 
     def _missing(self, url: str) -> CrawlResult:

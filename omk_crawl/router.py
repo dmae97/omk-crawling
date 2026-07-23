@@ -14,13 +14,16 @@ Each step:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from omk_crawl.detect import missing_tools
+from omk_crawl.detect import Detection, detect_block, missing_tools
 from omk_crawl.result import CrawlResult, CrawlStatus
 from omk_crawl.tools import ESCALATION_CHAIN, get_tool
 from omk_crawl.tools.base import BaseTool
+
+logger = logging.getLogger("omk_crawl")
 
 
 @dataclass
@@ -56,7 +59,7 @@ class SmartRouter:
     decisions: list[RouteDecision] = field(default_factory=list)
 
     def _get_chain(self) -> list[BaseTool]:
-        if self.tools:
+        if self.tools is not None:
             return [get_tool(name) for name in self.tools]
         chain = []
         for cls in ESCALATION_CHAIN:
@@ -82,26 +85,35 @@ class SmartRouter:
             )
 
         best: CrawlResult | None = None
+        skip_to = 0  # detection-aware chain start
 
         for i, tool in enumerate(chain[: self.max_attempts]):
+            if i < skip_to:
+                continue
             self._log(f"[{i + 1}/{len(chain)}] Trying {tool.name}...")
             result = tool.fetch(url, **merged)
             self.history.append(result)
+
+            # Run detection on the result for routing decisions
+            det = detect_block(result.html, result.status_code)
+            result.metadata.setdefault("detection", det.detail)
+            result.metadata["block_type"] = det.block.name
 
             self.decisions.append(
                 RouteDecision(
                     tool=tool.name,
                     reason=self._escalation_reason(result),
                     attempt=i + 1,
-                    detection=result.metadata.get("detection", ""),
+                    detection=det.detail,
                 )
             )
 
             if result.ok:
                 self._log(f"  ✓ {tool.name} succeeded ({result.elapsed_ms:.0f}ms)")
+                self._ensure_markdown(result)
                 return result
 
-            detail = result.error or result.metadata.get("detection", "")
+            detail = result.error or det.detail
             self._log(
                 f"  ✗ {tool.name}: {result.status.value} — {detail}"
             )
@@ -115,10 +127,14 @@ class SmartRouter:
                 self._log("  Hard error, stopping escalation.")
                 break
 
+            # Detection-aware routing: skip ahead based on what we detected
+            skip_to = max(skip_to, self._skip_index(det, chain, i))
+
         # All tools failed — return best attempt
         if best:
             best.metadata["escalation_exhausted"] = True
             best.metadata["attempts"] = len(self.history)
+            self._ensure_markdown(best)
             return best
 
         return CrawlResult(url=url, status=CrawlStatus.ERROR, error="No tools available")
@@ -136,12 +152,20 @@ class SmartRouter:
             )
 
         best: CrawlResult | None = None
+        skip_to = 0
 
         for i, tool in enumerate(chain[: self.max_attempts]):
+            if i < skip_to:
+                continue
             result = await tool.fetch_async(url, **merged)
             self.history.append(result)
 
+            det = detect_block(result.html, result.status_code)
+            result.metadata.setdefault("detection", det.detail)
+            result.metadata["block_type"] = det.block.name
+
             if result.ok:
+                self._ensure_markdown(result)
                 return result
 
             if best is None or self._score(result) > self._score(best):
@@ -150,8 +174,11 @@ class SmartRouter:
             if result.status is CrawlStatus.ERROR and not result.blocked:
                 break
 
+            skip_to = max(skip_to, self._skip_index(det, chain, i))
+
         if best:
             best.metadata["escalation_exhausted"] = True
+            self._ensure_markdown(best)
             return best
 
         return CrawlResult(url=url, status=CrawlStatus.ERROR, error="No tools available")
@@ -191,9 +218,39 @@ class SmartRouter:
             return "JS rendering needed → escalate to browser"
         return r.error or "failed"
 
+    @staticmethod
+    def _skip_index(det: Detection, chain: list[BaseTool], current: int) -> int:
+        """Use detection results to skip ahead in the escalation chain.
+
+        If we detect JS_REQUIRED or needs_stealth, skip non-browser tools.
+        If we detect needs_llm_agent, skip to the LLM agent tool.
+        """
+        if det.needs_llm_agent:
+            for j in range(current + 1, len(chain)):
+                if chain[j].needs_llm:
+                    return j
+        if det.needs_stealth or det.needs_browser:
+            for j in range(current + 1, len(chain)):
+                if chain[j].needs_browser:
+                    return j
+        return current + 1
+
+    @staticmethod
+    def _ensure_markdown(r: CrawlResult) -> None:
+        """Convert HTML to markdown if the tool didn't provide it."""
+        if r.markdown or not r.html:
+            return
+        try:
+            import re
+
+            r.markdown = re.sub(r"<[^>]+>", "", r.html).strip()
+            r.metadata.setdefault("markdown_fallback", "tag-strip")
+        except Exception:
+            pass
+
     def _log(self, msg: str) -> None:
         if self.verbose:
-            print(f"  [omk-crawl] {msg}")
+            logger.info(msg)
 
 
 # --- Module-level convenience ---

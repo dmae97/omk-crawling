@@ -1,7 +1,7 @@
 """omk-crawl — Smart web crawling toolbox.
 
-Auto-routes across 10 tools with escalation:
-  curl_cffi → crawl4ai → scrapling → browser-use
+Auto-escalating router across 6 adapters:
+  curl_cffi → crawl4ai → scrapling → browser-use (+ autoscraper, markitdown)
 
 Usage:
     from omk_crawl import crawl

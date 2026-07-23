@@ -6,6 +6,8 @@ import importlib.util
 from dataclasses import dataclass
 from enum import Flag, auto
 
+from omk_crawl.result import CrawlStatus
+
 
 class BlockType(Flag):
     """Detected blocking mechanism."""
@@ -128,3 +130,33 @@ def detect_block(html: str | None, status_code: int | None) -> Detection:
         d.detail = "No blocking detected"
 
     return d
+
+
+def detection_to_status(det: Detection) -> CrawlStatus:
+    """Map a Detection to the appropriate CrawlStatus.
+
+    Priority: HTTP error > TLS block > JS required > generic block > OK.
+    """
+    sc = det.status_code
+    # HTTP-level errors that are NOT blocking (don't escalate)
+    if sc is not None and sc >= 400:
+        if sc == 429:
+            return CrawlStatus.BLOCKED  # rate limit — might retry
+        if sc == 401:
+            return CrawlStatus.ERROR  # auth — no point escalating
+        if sc in (404, 405, 410):
+            return CrawlStatus.ERROR  # client error — not a block
+        if sc >= 500:
+            return CrawlStatus.ERROR  # server error — not a block
+        # 403 / other 4xx with blocking markers → continue to block checks
+    # Blocking detection
+    if BlockType.TLS_FINGERPRINT in det.block:
+        return CrawlStatus.TLS_BLOCKED
+    if BlockType.JS_REQUIRED in det.block and det.needs_browser:
+        return CrawlStatus.JS_REQUIRED
+    if det.block.value != 0:
+        return CrawlStatus.BLOCKED
+    # Final guard: any 4xx/5xx not caught above
+    if sc is not None and sc >= 400:
+        return CrawlStatus.ERROR
+    return CrawlStatus.OK

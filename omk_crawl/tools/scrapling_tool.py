@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from omk_crawl.detect import detect_block
-from omk_crawl.result import CrawlResult, CrawlStatus, _timer
+from omk_crawl.detect import detect_block, detection_to_status
+from omk_crawl.result import CrawlResult, _timer
 from omk_crawl.tools.base import BaseTool
 
 
@@ -22,13 +22,12 @@ class ScraplingTool(BaseTool):
         try:
             from scrapling import StealthyFetcher
 
-            fetcher = StealthyFetcher()
-            page = fetcher.fetch(url, headless=kwargs.get("headless", True))
+            page = StealthyFetcher.fetch(url, headless=kwargs.get("headless", True))
 
             html = page.html_content if hasattr(page, "html_content") else str(page)
             status_code = page.status if hasattr(page, "status") else None
             det = detect_block(html, status_code)
-            status = CrawlStatus.OK if det.block.value == 0 else CrawlStatus.BLOCKED
+            status = detection_to_status(det)
 
             return CrawlResult(
                 url=url,

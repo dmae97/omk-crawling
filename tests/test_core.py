@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from omk_crawl.detect import BlockType, detect_block, tool_available, available_tools, missing_tools
+from omk_crawl.detect import BlockType, available_tools, detect_block, missing_tools, tool_available
 from omk_crawl.result import CrawlResult, CrawlStatus
 from omk_crawl.router import SmartRouter
 from omk_crawl.tools import ALL_TOOLS, ESCALATION_CHAIN, get_tool
-
 
 # --- CrawlResult ---
 
@@ -29,11 +28,16 @@ class TestCrawlResult:
         assert r.blocked
 
     def test_content_priority(self):
-        r = CrawlResult(url="x", status=CrawlStatus.OK, html="<p>hi</p>", markdown="# hi", fit_markdown="hi")
+        r = CrawlResult(
+            url="x", status=CrawlStatus.OK, html="<p>hi</p>", markdown="# hi", fit_markdown="hi",
+        )
         assert r.content == "hi"  # fit_markdown > markdown > html
 
     def test_summary(self):
-        r = CrawlResult(url="https://x.com", status=CrawlStatus.OK, tool="curl_cffi", status_code=200, elapsed_ms=42.5, markdown="hello")
+        r = CrawlResult(
+            url="https://x.com", status=CrawlStatus.OK, tool="curl_cffi",
+            status_code=200, elapsed_ms=42.5, markdown="hello",
+        )
         s = r.summary()
         assert "ok" in s
         assert "curl_cffi" in s

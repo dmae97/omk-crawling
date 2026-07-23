@@ -5,16 +5,15 @@
 <h1 align="center">omk-crawling</h1>
 
 <p align="center">
-  <strong>Smart web crawling toolbox — 10 tools, one router.</strong><br/>
+  <strong>Smart web crawling toolbox — 6 adapters, one router.</strong><br/>
   Fetch → Crawl → Browser → Extract → Convert → Mobile. Auto-escalates until it works.
 </p>
 
 <p align="center">
   <a href="https://github.com/dmae97/omk-crawling/blob/main/LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-00d7ff?style=for-the-badge" /></a>
-  <a href="https://pypi.org/project/omk-crawl/"><img alt="PyPI" src="https://img.shields.io/badge/pypi-omk--crawl-ff2d95?style=for-the-badge&logo=pypi&logoColor=white" /></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=for-the-badge&logo=python&logoColor=white" />
-  <img alt="Tools" src="https://img.shields.io/badge/tools-10-success?style=for-the-badge" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-27%20passed-brightgreen?style=for-the-badge" />
+  <img alt="Adapters" src="https://img.shields.io/badge/adapters-6-success?style=for-the-badge" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-passing-brightgreen?style=for-the-badge" />
 </p>
 
 <p align="center">
@@ -73,7 +72,7 @@
 
 Web crawling never ends with one tool. A site might block your TLS fingerprint, require JS rendering,
 hide behind Cloudflare, or need a full LLM agent to navigate a login flow. **omk-crawling routes
-across 10 tools automatically**, escalating from the lightest to the heaviest until the data is yours.
+across 6 adapters automatically** (4 in the escalation chain), escalating from the lightest to the heaviest until the data is yours.
 
 ```
 curl_cffi (0ms browser) → crawl4ai (render) → scrapling (stealth) → browser-use (LLM agent)
@@ -122,12 +121,12 @@ cd omk-crawling
 ### As Python Package
 
 ```bash
-pip install omk-crawl              # core (zero-dep router + CLI)
-pip install omk-crawl[curl]        # + curl_cffi (TLS fingerprint)
-pip install omk-crawl[crawl4ai]    # + crawl4ai (browser + markdown)
-pip install omk-crawl[scrapling]   # + scrapling (stealth)
-pip install omk-crawl[browser]     # + browser-use (LLM agent)
-pip install omk-crawl[all]         # everything
+pip install git+https://github.com/dmae97/omk-crawling.git              # core (zero-dep router + CLI)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[curl]"        # + curl_cffi (TLS fingerprint)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[crawl4ai]"    # + crawl4ai (browser + markdown)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[scrapling]"   # + scrapling (stealth)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[browser]"     # + browser-use (LLM agent)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[all]"         # everything
 ```
 
 ---
@@ -197,18 +196,20 @@ asyncio.run(main())
 
 ## Tool Router
 
-| Need | Tool | Layer |
+6 adapters implemented, 4 in the auto-escalation chain. Additional tools (scrapy, crawlee, scrcpy, curl-impersonate, insane-search) are documented in [`references/`](references/) for manual use.
+
+| Need | Tool | Layer | Status |
 |------|------|-------|
-| Single blocked URL (403/WAF) | `insane-search` | ① Fetch |
-| TLS/JA3 fingerprint block | `curl-impersonate` / `curl_cffi` | ① Fetch |
-| Anti-bot stealth + Cloudflare | `scrapling` | ① Fetch |
-| Large-scale classic crawl | `scrapy` | ② Crawl |
-| Queue · auto-scale · proxy | `crawlee` | ② Crawl |
-| Web → LLM Markdown · deep crawl · MCP | `crawl4ai` | ② Crawl |
-| LLM agent drives browser | `browser-use` | ③ Browser |
-| Learn extraction from examples | `autoscraper` | ④ Extract |
-| PDF/Office/image/audio → Markdown | `markitdown` | ⑤ Convert |
-| Android-only data | `scrcpy` | ⑥ Mobile |
+| Single blocked URL (403/WAF) | `insane-search` | ① Fetch | documented |
+| TLS/JA3 fingerprint block | `curl-impersonate` / `curl_cffi` | ① Fetch | **adapter** |
+| Anti-bot stealth + Cloudflare | `scrapling` | ① Fetch | **adapter** |
+| Large-scale classic crawl | `scrapy` | ② Crawl | documented |
+| Queue · auto-scale · proxy | `crawlee` | ② Crawl | documented |
+| Web → LLM Markdown · deep crawl · MCP | `crawl4ai` | ② Crawl | **adapter** |
+| LLM agent drives browser | `browser-use` | ③ Browser | **adapter** |
+| Learn extraction from examples | `autoscraper` | ④ Extract | **adapter** |
+| PDF/Office/image/audio → Markdown | `markitdown` | ⑤ Convert | **adapter** |
+| Android-only data | `scrcpy` | ⑥ Mobile | documented |
 
 Full decision tree: [`references/routing.md`](references/routing.md)
 
@@ -225,8 +226,8 @@ omk_crawl/              # Python package
   pipeline.py           # Composable fetch → extract → convert
   cli.py                # CLI entry point (omk-crawl)
   tools/                # Tool adapters (6 adapters)
-tests/                  # 27 tests (pytest)
-references/             # Per-tool deep-dive docs (14 files)
+tests/                  # pytest suite
+references/             # Per-tool reference docs (14 files)
 examples/               # Runnable examples (7 files)
 scripts/                # check-versions.sh
 assets/                 # Hero image
@@ -241,7 +242,7 @@ install.sh              # One-liner skill installer
 
 ```bash
 pip install -e ".[all,dev]"
-pytest tests/ -v                    # 27 tests
+pytest tests/ -v                    # run tests
 bash scripts/check-versions.sh      # upstream version drift
 ruff check omk_crawl/               # lint
 ```
@@ -271,6 +272,15 @@ Built on the shoulders of 11 amazing projects. See [NOTICE.md](NOTICE.md) for fu
 ## License
 
 Apache-2.0. See [LICENSE.txt](LICENSE.txt) and [NOTICE.md](NOTICE.md).
+
+## Responsible Use
+
+This toolbox includes TLS fingerprint impersonation and anti-bot bypass capabilities. Use responsibly:
+
+- **Respect robots.txt** and site Terms of Service before crawling.
+- **Rate-limit your requests** — don't overwhelm target servers.
+- **Only crawl data you're authorized to access.** Bypassing authentication or accessing protected data without permission may violate laws (CFAA, GDPR, etc.).
+- These tools are intended for legitimate research, development, and data extraction within legal boundaries.
 
 > This product includes software developed by UncleCode (https://x.com/unclecode)
 > as part of the Crawl4AI project (https://github.com/unclecode/crawl4ai).

@@ -2,6 +2,8 @@ Apache License
 Version 2.0, January 2004
 http://www.apache.org/licenses/
 
+Copyright 2026 omk-crawling contributors
+
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
 1. Definitions.
@@ -51,7 +53,11 @@ You may add Your own copyright statement to Your modifications and may provide a
 END OF TERMS AND CONDITIONS
 
 ---
-Attribution Requirement
+
+## crawl4ai Attribution Addendum (upstream requirement)
+
+The following attribution is required by crawl4ai's Apache-2.0 license addendum.
+It applies to any use of crawl4ai or derivative works that include crawl4ai:
 
 All distributions, publications, or public uses of this software, or derivative works based on this software, must include the following attribution:
 

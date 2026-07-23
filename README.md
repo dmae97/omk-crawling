@@ -81,3 +81,6 @@ Built on the shoulders of 11 amazing projects. See [NOTICE.md](NOTICE.md) for fu
 ## License
 
 Apache-2.0. See [LICENSE.txt](LICENSE.txt) and [NOTICE.md](NOTICE.md).
+
+> This product includes software developed by UncleCode (https://x.com/unclecode)
+> as part of the Crawl4AI project (https://github.com/unclecode/crawl4ai).

@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -306,7 +307,9 @@ class Endpoint:
 class EndpointChain:
     """Try endpoints in order until one succeeds. Solves DNS failures + wrong URLs."""
 
-    def __init__(self, endpoints: list[Endpoint], rotator: ImpersonateRotator | None = None) -> None:
+    def __init__(
+        self, endpoints: list[Endpoint], rotator: ImpersonateRotator | None = None,
+    ) -> None:
         self.endpoints = endpoints
         self.rotator = rotator or ImpersonateRotator()
 

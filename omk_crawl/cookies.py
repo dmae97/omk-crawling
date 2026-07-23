@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -61,7 +61,7 @@ class CookieManager:
 
     # ── import ──────────────────────────────────────────────
     @classmethod
-    def from_file(cls, path: str | Path) -> "CookieManager":
+    def from_file(cls, path: str | Path) -> CookieManager:
         """Auto-detect format from a file (JSON or Netscape cookies.txt)."""
         mgr = cls()
         text = Path(path).read_text(encoding="utf-8", errors="replace").strip()
@@ -71,7 +71,7 @@ class CookieManager:
             mgr.load_netscape(text)
         return mgr
 
-    def load_json(self, text: str, default_domain: str = "") -> "CookieManager":
+    def load_json(self, text: str, default_domain: str = "") -> CookieManager:
         data = json.loads(text)
         if isinstance(data, dict):
             for k, v in data.items():
@@ -95,7 +95,7 @@ class CookieManager:
         log.info("loaded %d cookies from JSON", len(self.cookies))
         return self
 
-    def load_netscape(self, text: str) -> "CookieManager":
+    def load_netscape(self, text: str) -> CookieManager:
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -115,7 +115,7 @@ class CookieManager:
         log.info("loaded %d cookies from Netscape file", len(self.cookies))
         return self
 
-    def load_header(self, header: str, default_domain: str = "") -> "CookieManager":
+    def load_header(self, header: str, default_domain: str = "") -> CookieManager:
         """Parse a `Cookie:` header value: 'a=1; b=2'."""
         for pair in header.split(";"):
             pair = pair.strip()

@@ -14,6 +14,7 @@ class ScraplingTool(BaseTool):
     pip_package = "scrapling"
     layer = 0
     needs_browser = True
+    capabilities = frozenset({"timeout", "proxy", "js_render", "stealth"})
 
     def fetch(self, url: str, **kwargs: Any) -> CrawlResult:
         if not self.available():
@@ -22,17 +23,21 @@ class ScraplingTool(BaseTool):
         try:
             from scrapling import StealthyFetcher
 
-            page = StealthyFetcher.fetch(
-                url,
-                headless=kwargs.get("headless", True),
-                timeout=kwargs.get("timeout", 30) * 1000,  # scrapling uses ms
-            )
+            fetch_kwargs: dict[str, Any] = {
+                "headless": kwargs.get("headless", True),
+                "timeout": kwargs.get("timeout", 30) * 1000,  # scrapling uses ms
+            }
+            if kwargs.get("proxy"):
+                fetch_kwargs["proxy"] = kwargs["proxy"]
+            page = StealthyFetcher.fetch(url, **fetch_kwargs)
 
             html = page.html_content if hasattr(page, "html_content") else str(page)
             status_code = page.status if hasattr(page, "status") else None
             det = detect_block(html, status_code)
             status = detection_to_status(det)
 
+            meta = {"detection": det.detail, "stealth": True}
+            meta.update(self.contract_metadata(kwargs))
             return CrawlResult(
                 url=url,
                 status=status,
@@ -40,7 +45,7 @@ class ScraplingTool(BaseTool):
                 html=html,
                 tool=self.name,
                 elapsed_ms=stop(),
-                metadata={"detection": det.detail, "stealth": True},
+                metadata=meta,
             )
         except Exception as exc:
             r = self._error(url, exc)

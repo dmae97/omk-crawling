@@ -27,6 +27,12 @@ from urllib.parse import urlparse
 
 from omk_crawl.detect import check_robots_txt, detect_block, missing_tools
 from omk_crawl.result import CrawlResult, CrawlStatus
+from omk_crawl.routing import (
+    CONFIDENCE_THRESHOLD,
+    is_auth_block,
+    preferred_order,
+    reorder_tools,
+)
 from omk_crawl.tools import ESCALATION_CHAIN, get_tool
 from omk_crawl.tools.base import BaseTool
 
@@ -115,9 +121,15 @@ class SmartRouter:
             )
 
         best: CrawlResult | None = None
+        pending = list(chain)              # tool objects still to try
+        chain_names = [t.name for t in chain]
+        attempts = 0
+        rerouted = False
 
-        for i, tool in enumerate(chain[: self.max_attempts]):
-            self._log(f"[{i + 1}/{len(chain)}] Trying {tool.name}...")
+        while pending and attempts < self.max_attempts:
+            tool = pending.pop(0)
+            attempts += 1
+            self._log(f"[{attempts}/{len(chain)}] Trying {tool.name}...")
             result = self._fetch_with_retry(tool, url, **merged)
             self.history.append(result)
 
@@ -130,7 +142,7 @@ class SmartRouter:
                 RouteDecision(
                     tool=tool.name,
                     reason=self._escalation_reason(result),
-                    attempt=i + 1,
+                    attempt=attempts,
                     detection=det.detail,
                 )
             )
@@ -153,6 +165,24 @@ class SmartRouter:
             if result.status is CrawlStatus.ERROR and not result.blocked:
                 self._log("  Hard error, stopping escalation.")
                 break
+
+            # Auth required → we do NOT bypass authentication; stop.
+            if is_auth_block(det.block):
+                self._log("  Auth required — not escalating (no bypass).")
+                result.metadata["auth_stop"] = True
+                break
+
+            # Detection-aware reroute of the remaining tools (once).
+            if not rerouted and det.confidence >= CONFIDENCE_THRESHOLD and pending:
+                remaining_names = [t.name for t in pending]
+                new_order = preferred_order(
+                    det.block, det.confidence, remaining_names, chain_names,
+                )
+                if new_order != remaining_names:
+                    self._log(f"  Reroute on {det.block.name}: next → {new_order}")
+                    result.metadata["rerouted_to"] = new_order
+                pending = reorder_tools(pending, new_order)
+                rerouted = True
 
         # All tools failed — return best attempt
         if best:
@@ -183,14 +213,29 @@ class SmartRouter:
             )
 
         best: CrawlResult | None = None
+        pending = list(chain)
+        chain_names = [t.name for t in chain]
+        attempts = 0
+        rerouted = False
 
-        for i, tool in enumerate(chain[: self.max_attempts]):
+        while pending and attempts < self.max_attempts:
+            tool = pending.pop(0)
+            attempts += 1
             result = await self._fetch_async_with_retry(tool, url, **merged)
             self.history.append(result)
 
             det = detect_block(result.html, result.status_code)
             result.metadata.setdefault("detection", det.detail)
             result.metadata["block_type"] = det.block.name
+
+            self.decisions.append(
+                RouteDecision(
+                    tool=tool.name,
+                    reason=self._escalation_reason(result),
+                    attempt=attempts,
+                    detection=det.detail,
+                )
+            )
 
             if result.ok:
                 self._ensure_markdown(result)
@@ -202,21 +247,50 @@ class SmartRouter:
             if result.status is CrawlStatus.ERROR and not result.blocked:
                 break
 
+            if is_auth_block(det.block):
+                result.metadata["auth_stop"] = True
+                break
+
+            if not rerouted and det.confidence >= CONFIDENCE_THRESHOLD and pending:
+                remaining_names = [t.name for t in pending]
+                new_order = preferred_order(
+                    det.block, det.confidence, remaining_names, chain_names,
+                )
+                if new_order != remaining_names:
+                    result.metadata["rerouted_to"] = new_order
+                pending = reorder_tools(pending, new_order)
+                rerouted = True
+
         if best:
             best.metadata["escalation_exhausted"] = True
+            best.metadata["attempts"] = len(self.history)
             self._ensure_markdown(best)
             return best
 
         return CrawlResult(url=url, status=CrawlStatus.ERROR, error="No tools available")
 
     def diagnose(self, url: str) -> dict[str, Any]:
-        """Dry-run: check what tools are available and what we'd try."""
+        """Dry-run: check what tools are available and what we'd try.
+
+        Includes the detection-aware routing table so callers can see *why* a
+        given block type would reorder the chain.
+        """
+        from omk_crawl.routing import DEFAULT_ORDER, ROUTE_TABLE
+
         chain = self._get_chain()
+        available = [t.name for t in chain]
+        # For each block type, show the preferred order filtered to what's
+        # actually installed — "if we detect X, we try these next".
+        routing = {
+            bt.name: preferred_order(bt, 0.9, available, DEFAULT_ORDER)
+            for bt in ROUTE_TABLE
+        }
         return {
             "url": url,
-            "available_tools": [t.name for t in chain],
+            "available_tools": available,
             "missing_tools": missing_tools(),
             "escalation_order": [t.name for t in chain[: self.max_attempts]],
+            "routing": routing,
             "install_hint": "pip install omk-crawl[all]",
         }
 

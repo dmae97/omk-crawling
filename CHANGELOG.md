@@ -1,5 +1,48 @@
 # Changelog
 
+## [2.5.0] — 2026-07-24
+
+Quality release driven by external code review — shifts weight from docs/demo
+to routing quality, adapter contract, and a real benchmark (the three levers
+the review identified for moving 78 → 90).
+
+### Added — detection-aware routing (Phase 2)
+- **`routing.py`** — `ROUTE_TABLE` maps each `BlockType` to a preferred tool
+  order (TLS→curl_cffi, JS→crawl4ai, CF/WAF→scrapling). `preferred_order()`
+  reorders the remaining chain after a detected block; `reorder_tools()` is
+  stable for duplicate names. AUTH_REQUIRED returns `[]` — we never escalate
+  into an auth bypass.
+- `SmartRouter.crawl()` / `crawl_async()` now reroute mid-escalation based on
+  the live detection (once, above a 0.5 confidence threshold), skip auth
+  blocks, and record `rerouted_to` in result metadata.
+- `diagnose()` now emits the routing table so callers see *why* a block type
+  would reorder the chain.
+- 17 routing tests (table, permutation, stability, router reroute integration).
+
+### Added — unified adapter contract (Phase 1)
+- `BaseTool.capabilities` (frozenset) + `COMMON_KWARGS` (timeout/proxy/headers/
+  cookies/session). `supports()`, `unsupported_features()`, `contract_metadata()`
+  report requested-but-unsupported features explicitly instead of silent no-ops.
+- curl_cffi: proxy normalization + cookies; crawl4ai: headers; scrapling: proxy.
+  All four core adapters declare capabilities.
+- 15 contract tests.
+
+### Added — browser-use cost guards (Phase 5)
+- `max_steps`, `max_cost_usd`, `deadline_s` caps; excluded from the chain when
+  no LLM key is configured; failure taxonomy (nav/login/timeout/model/unknown);
+  `dry_run` mode reports guardrails without spending.
+
+### Added — benchmark harness (Phase 3)
+- `benchmarks/sites.yaml` — 20 sites across static / JS / soft-wall / hard-wall.
+- `scripts/bench.py` — mock (CI) + live modes; success@1/final, p50/p95 latency,
+  bytes, tool path, cost proxy → `benchmarks/latest.json` + Markdown table.
+- README benchmark table from a polite live run (7/7 success@1).
+
+### Changed — consistency (Phase 0)
+- Tool-count framing unified: 6 runtime adapters (4 core escalation + 2 aux),
+  skill catalog references 10. Version aligned across `pyproject`/`__init__`/tag.
+- GitHub topics added (web-scraping, crawler, anti-bot, markdown, python, …).
+
 ## [2.4.0] — 2026-07-24
 
 Large capability + stability release. All new modules keep the zero-dependency

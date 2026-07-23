@@ -9,11 +9,12 @@ one failing endpoint can't stall the batch.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
-from omk_crawl.stability import BreakerRegistry, get_logger
 from omk_crawl.resilience import TokenBucket
+from omk_crawl.stability import BreakerRegistry, get_logger
 
 log = get_logger("omk_crawl.async_batch")
 

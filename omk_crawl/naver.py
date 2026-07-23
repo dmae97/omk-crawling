@@ -10,9 +10,7 @@ Bottleneck resolutions:
 from __future__ import annotations
 
 import json
-import re
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -200,7 +198,7 @@ class NaverCafeClient:
         return self._fetcher
 
     # ── session (YOUR OWN account) ────────────────────────────
-    def set_cookie_manager(self, mgr) -> "NaverCafeClient":
+    def set_cookie_manager(self, mgr) -> NaverCafeClient:
         """Inject cookies loaded via CookieManager (your own browser session).
 
         Legal scope: reuse of YOUR authenticated session for content you are
@@ -266,7 +264,9 @@ class NaverCafeClient:
             r = self.fetcher.fetch_json_api(url, params=params, headers=self._api_headers())
             if r.ok and r.json_data is not None:
                 self.cache.put(cache_key, {"_code": r.status_code, "data": r.json_data})
-                return NaverResult(ok=True, endpoint=url, status_code=r.status_code, data=r.json_data)
+                return NaverResult(
+                    ok=True, endpoint=url, status_code=r.status_code, data=r.json_data,
+                )
             return NaverResult(ok=False, endpoint=url, status_code=r.status_code,
                                error=r.error or "empty")
 

@@ -198,7 +198,7 @@ asyncio.run(main())
 
 ## Tool Router
 
-6 adapters implemented, 4 in the auto-escalation chain. Additional tools (scrapy, crawlee, scrcpy, curl-impersonate, insane-search) are documented in [`references/`](references/) for manual use.
+**6 runtime adapters** — 4 core in the auto-escalation chain (curl_cffi → crawl4ai → scrapling → browser-use) plus 2 auxiliary (autoscraper, markitdown). The skill *catalog* references 10 tools overall; the remainder (scrapy, crawlee, scrcpy, curl-impersonate, insane-search) are documented in [`references/`](references/) for manual use, not wired into the router.
 
 | Need | Tool | Layer | Status |
 |------|------|-------|
@@ -214,6 +214,42 @@ asyncio.run(main())
 | Android-only data | `scrcpy` | ⑥ Mobile | documented |
 
 Full decision tree: [`references/routing.md`](references/routing.md)
+
+---
+
+## Benchmarks
+
+The router is measured against a 20-site set spanning four difficulty tiers
+(static, JS/SPA, soft bot-wall, hard CF/WAF) in [`benchmarks/sites.yaml`](benchmarks/sites.yaml).
+Metrics: **success@1** (first tool, no escalation), **success@final** (any tool),
+**p50/p95 latency**, content **bytes**, the **tool path** actually tried, and a
+**cost proxy** (how many browser/LLM-tier tools escalation invoked).
+
+Live run, polite subset (scrape-friendly sites only, `robots.txt` respected,
+≥1 s between requests), zero-dep install (curl_cffi):
+
+| site | category | ok@1 | ok@final | p50 ms | p95 ms | KB | tool path | cost |
+|------|----------|:----:|:--------:|-------:|-------:|---:|-----------|:----:|
+| example.com | static | ✓ | ✓ | 661 | 917 | 0 | curl_cffi | 0 |
+| httpbin-html | static | ✓ | ✓ | 1318 | 1542 | 3 | curl_cffi | 0 |
+| books.toscrape | static | ✓ | ✓ | 1577 | 1944 | 10 | curl_cffi | 0 |
+| quotes.toscrape | static | ✓ | ✓ | 1277 | 1595 | 2 | curl_cffi | 0 |
+| info.cern | static | ✓ | ✓ | 1666 | 2150 | 0 | curl_cffi | 0 |
+| quotes-js | js | ✓ | ✓ | 894 | 997 | 0 | curl_cffi | 0 |
+| httpbin-root | js | ✓ | ✓ | 857 | 978 | 0 | curl_cffi | 0 |
+
+**success@1 7/7 · success@final 7/7.** Note the JS rows return HTTP 200 but ~0 KB
+of usable content with curl_cffi alone — exactly the case where installing a
+renderer (`pip install omk-crawl[crawl4ai]`) lets the router escalate to real
+content. The hard CF/WAF tier is exercised by the nightly live benchmark only.
+
+```bash
+python scripts/bench.py --mock                              # CI: synthetic, no network
+python scripts/bench.py --category static,js --live-only --runs 2   # polite live
+python scripts/bench.py --runs 3                            # full set (use responsibly)
+```
+
+Results are written to `benchmarks/latest.json`.
 
 ---
 

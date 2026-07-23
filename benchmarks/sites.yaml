@@ -1,0 +1,49 @@
+# Benchmark site set — 20 sites across 4 difficulty tiers.
+#
+# Categories:
+#   static     — server-rendered HTML, no JS needed (curl_cffi should win @1)
+#   js         — JS SPA / client-rendered (needs a renderer: crawl4ai/scrapling)
+#   soft-wall  — light anti-bot (rate limits, basic UA/header checks)
+#   hard-wall  — Cloudflare / WAF challenges (needs stealth; browser-use last)
+#
+# Politeness: the `live` tier marks sites that are explicitly scrape-friendly
+# (practice sandboxes, public test endpoints). The hard-wall tier is listed for
+# the nightly live benchmark only — CI runs `--mock`, and ad-hoc runs should
+# target `--category static,js` to avoid hammering protected production sites.
+
+sites:
+  # --- static (5) ---------------------------------------------------------
+  - { name: example.com,        url: https://example.com,                  category: static, live: true }
+  - { name: httpbin-html,       url: https://httpbin.org/html,             category: static, live: true }
+  - { name: books.toscrape,     url: https://books.toscrape.com/,          category: static, live: true }
+  - { name: quotes.toscrape,    url: https://quotes.toscrape.com/,         category: static, live: true }
+  - { name: info.cern,          url: https://info.cern.ch/,                category: static, live: true }
+
+  # --- js / SPA (5) -------------------------------------------------------
+  - { name: quotes-js,          url: https://quotes.toscrape.com/js/,      category: js, live: true }
+  - { name: httpbin-root,       url: https://httpbin.org/,                 category: js, live: true }
+  - { name: todomvc,            url: https://todomvc.com/examples/react/,  category: js, live: false }
+  - { name: angularjs,          url: https://angularjs.org/,               category: js, live: false }
+  - { name: vuejs,              url: https://vuejs.org/,                   category: js, live: false }
+
+  # --- soft bot wall (5) --------------------------------------------------
+  - { name: httpbin-ua,         url: https://httpbin.org/user-agent,       category: soft-wall, live: true }
+  - { name: httpbin-headers,    url: https://httpbin.org/headers,          category: soft-wall, live: true }
+  - { name: httpbin-status403,  url: https://httpbin.org/status/403,       category: soft-wall, live: true }
+  - { name: nowsecure,          url: https://nowsecure.nl/,                category: soft-wall, live: false }
+  - { name: scrapeme,           url: https://scrapeme.live/shop/,          category: soft-wall, live: false }
+
+  # --- hard CF / WAF (5) — nightly live only ------------------------------
+  - { name: cf-challenge,       url: https://nope.challengenetworks.com/,  category: hard-wall, live: false }
+  - { name: g2,                 url: https://www.g2.com/,                  category: hard-wall, live: false }
+  - { name: indeed,             url: https://www.indeed.com/,              category: hard-wall, live: false }
+  - { name: linkedin,           url: https://www.linkedin.com/,            category: hard-wall, live: false }
+  - { name: zoominfo,           url: https://www.zoominfo.com/,            category: hard-wall, live: false }
+
+# Metrics recorded per site (see scripts/bench.py):
+#   success_at_1     first tool succeeded (no escalation needed)
+#   success_at_final any tool in the chain succeeded
+#   latency_ms       p50 / p95 over N runs
+#   bytes            content length of the best result
+#   tool_path        ordered tools actually tried
+#   cost_proxy       count of browser/LLM-tier tools invoked (escalation cost)

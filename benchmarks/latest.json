@@ -1,0 +1,105 @@
+{
+  "mode": "live",
+  "runs": 2,
+  "generated_at": "2026-07-24T08:12:56+0900",
+  "results": [
+    {
+      "name": "example.com",
+      "category": "static",
+      "url": "https://example.com",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 660.5,
+      "p95_ms": 917.0,
+      "bytes": 167,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "httpbin-html",
+      "category": "static",
+      "url": "https://httpbin.org/html",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 1318.0,
+      "p95_ms": 1541.7,
+      "bytes": 3597,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "books.toscrape",
+      "category": "static",
+      "url": "https://books.toscrape.com/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 1577.3,
+      "p95_ms": 1943.7,
+      "bytes": 10478,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "quotes.toscrape",
+      "category": "static",
+      "url": "https://quotes.toscrape.com/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 1276.6,
+      "p95_ms": 1595.4,
+      "bytes": 2973,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "info.cern",
+      "category": "static",
+      "url": "https://info.cern.ch/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 1665.8,
+      "p95_ms": 2150.0,
+      "bytes": 476,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "quotes-js",
+      "category": "js",
+      "url": "https://quotes.toscrape.com/js/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 893.5,
+      "p95_ms": 997.3,
+      "bytes": 172,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "httpbin-root",
+      "category": "js",
+      "url": "https://httpbin.org/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 856.8,
+      "p95_ms": 977.9,
+      "bytes": 398,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    }
+  ]
+}

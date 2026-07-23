@@ -14,6 +14,7 @@ class Crawl4aiTool(BaseTool):
     pip_package = "crawl4ai"
     layer = 1
     needs_browser = True
+    capabilities = frozenset({"timeout", "headers", "js_render", "markdown"})
 
     def fetch(self, url: str, **kwargs: Any) -> CrawlResult:
         if not self.available():
@@ -42,10 +43,13 @@ class Crawl4aiTool(BaseTool):
         try:
             from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 
-            cfg = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS,
-                page_timeout=kwargs.get("timeout", 30) * 1000,
-            )
+            run_kwargs: dict[str, Any] = {
+                "cache_mode": CacheMode.BYPASS,
+                "page_timeout": kwargs.get("timeout", 30) * 1000,
+            }
+            if kwargs.get("headers"):
+                run_kwargs["headers"] = kwargs["headers"]
+            cfg = CrawlerRunConfig(**run_kwargs)
             async with AsyncWebCrawler() as crawler:
                 r = await crawler.arun(url, config=cfg)
 
@@ -63,6 +67,8 @@ class Crawl4aiTool(BaseTool):
             status = detection_to_status(det)
 
             md = r.markdown
+            meta = {"detection": det.detail}
+            meta.update(self.contract_metadata(kwargs))
             return CrawlResult(
                 url=url,
                 status=status,
@@ -72,7 +78,7 @@ class Crawl4aiTool(BaseTool):
                 fit_markdown=md.fit_markdown if md else None,
                 tool=self.name,
                 elapsed_ms=stop(),
-                metadata={"detection": det.detail},
+                metadata=meta,
             )
         except Exception as exc:
             r = self._error(url, exc)

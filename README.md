@@ -224,7 +224,7 @@ Built on the shoulders of 11 amazing projects. See [NOTICE.md](NOTICE.md) for fu
 | 8 | [markitdown](https://github.com/microsoft/markitdown) | MIT | File → Markdown |
 | 9 | [scrcpy](https://github.com/Genymobile/scrcpy) | Apache-2.0 | Android mirror/control |
 | 10 | [scrapling](https://github.com/d4vinci/Scrapling) | BSD-3-Clause | Stealth scraping |
-| 11 | insane-search | OMK | Multi-source deep search |
+| 11 | [insane-search](https://github.com/fivetaku/gptaku_plugins) | GPTaku | Auto-bypass blocked sites (by **fivetaku**) |
 
 ---
 

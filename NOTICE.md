@@ -70,9 +70,13 @@ Every tool below is referenced, documented, and routed by this skill.
 > Stealth scraping framework. Cloudflare Turnstile bypass, adaptive selectors, spider framework.
 > By **d4vinci**. BSD-3-Clause.
 
-### 11. insane-search — OMK internal skill
-> Exhaustive multi-source search: rg → ast-grep → knowledge graph → git history → MCP.
-> Built within the OMK agent stack. Used as the "single blocked URL" breaker in this toolbox.
+### 11. insane-search — [fivetaku/gptaku_plugins](https://github.com/fivetaku/gptaku_plugins)
+> Exhaustive multi-source search & auto-bypass for blocked websites.
+> rg → ast-grep → knowledge graph → git history → MCP → WAF grid → Playwright.
+> By **fivetaku** ([@fivetaku](https://github.com/fivetaku)) via the
+> [GPTaku Plugins](https://github.com/fivetaku/gptaku_plugins) marketplace.
+> The "single blocked URL" breaker and WAF escalation engine in this toolbox.
+> **Huge shoutout to fivetaku for building the most insane search plugin in the ecosystem.** 🙏
 
 ## crawl4ai attribution (required)
 
@@ -94,7 +98,7 @@ Short form for agent/tool output:
 | Apache-2.0 | crawl4ai, crawlee, scrcpy | Attribution + NOTICE retention. crawl4ai has extra addendum. |
 | MIT | browser-use, curl-impersonate, curl_cffi, autoscraper, markitdown | Retain copyright + license notice. |
 | BSD-3-Clause | scrapy, scrapling | Retain copyright + license. No endorsement use. |
-| OMK internal | insane-search | Internal skill, no external distribution. |
+| GPTaku Plugins | insane-search | fivetaku/gptaku_plugins marketplace. |
 
 ## Notes
 

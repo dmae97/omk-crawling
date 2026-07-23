@@ -25,7 +25,7 @@ metadata:
     - { name: markitdown,       repo: https://github.com/microsoft/markitdown,      pkg: 'pip:markitdown[all]==0.1.6', license: MIT }
     - { name: scrcpy,           repo: https://github.com/Genymobile/scrcpy,         pkg: 'C tool (apt/brew/choco) v4.1', license: Apache-2.0 }
     - { name: scrapling,        repo: https://github.com/d4vinci/Scrapling,         pkg: 'pip:scrapling==0.4.11',      license: BSD-3-Clause }
-    - { name: insane-search,    repo: '(OMK internal skill)',                       pkg: 'builtin',                   license: OMK }
+    - { name: insane-search,    repo: https://github.com/fivetaku/gptaku_plugins,   pkg: 'gptaku plugin',             license: GPTaku }
 ---
 
 # omk-crawling — 웹·데이터 수집/추출 툴박스

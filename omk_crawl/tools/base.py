@@ -25,16 +25,22 @@ class BaseTool(abc.ABC):
         return f"pip install {self.pip_package}" if self.pip_package else ""
 
     @abc.abstractmethod
-    def fetch(self, url: str, **kwargs: Any) -> CrawlResult:
-        """Synchronous fetch. Must not raise — return CrawlResult with error."""
+    def fetch(self, url: str, *, timeout: int = 30, **kwargs: Any) -> CrawlResult:
+        """Synchronous fetch. Must not raise — return CrawlResult with error.
+
+        Args:
+            url: Target URL.
+            timeout: Request timeout in seconds (default 30).
+            **kwargs: Tool-specific options.
+        """
         ...
 
-    async def fetch_async(self, url: str, **kwargs: Any) -> CrawlResult:
+    async def fetch_async(self, url: str, *, timeout: int = 30, **kwargs: Any) -> CrawlResult:
         """Async fetch. Default: run sync in executor."""
         import asyncio
 
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, lambda: self.fetch(url, **kwargs))
+        return await loop.run_in_executor(None, lambda: self.fetch(url, timeout=timeout, **kwargs))
 
     def _missing(self, url: str) -> CrawlResult:
         return CrawlResult(

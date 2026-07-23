@@ -7,6 +7,16 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check omk_crawl/ tests/
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -14,24 +24,26 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -v --tb=short
 
-      - name: Install
-        run: pip install -e ".[dev]"
-
-      - name: Lint
-        run: ruff check omk_crawl/
-
-      - name: Test
-        run: pytest tests/ -v --tb=short
-
-  version-check:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check upstream versions
-        run: bash scripts/check-versions.sh
-        continue-on-error: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - run: |
+          python -c "
+          import zipfile, glob
+          whl = glob.glob('dist/*.whl')[0]
+          names = zipfile.ZipFile(whl).namelist()
+          assert any('py.typed' in n for n in names), 'py.typed missing from wheel'
+          print('py.typed found in wheel ✓')
+          "

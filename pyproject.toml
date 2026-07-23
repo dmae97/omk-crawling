@@ -27,26 +27,26 @@ dependencies = []
 
 [project.optional-dependencies]
 # Each tool is optional — install what you need
-curl = ["curl_cffi>=0.15"]
-crawl4ai = ["crawl4ai>=0.9"]
-scrapling = ["scrapling>=0.4"]
-scrapy = ["scrapy>=2.17"]
-crawlee = ["crawlee[all]>=1.8"]
-browser = ["browser-use>=0.13"]
-autoscraper = ["autoscraper>=1.1"]
-markitdown = ["markitdown[all]>=0.1"]
-selectolax = ["selectolax>=0.3"]
+curl = ["curl_cffi>=0.15,<1"]
+crawl4ai = ["crawl4ai>=0.9,<1"]
+scrapling = ["scrapling>=0.4,<1"]
+scrapy = ["scrapy>=2.17,<3"]
+crawlee = ["crawlee[all]>=1.8,<2"]
+browser = ["browser-use>=0.13,<1"]
+autoscraper = ["autoscraper>=1.1,<2"]
+markitdown = ["markitdown[all]>=0.1,<1"]
+selectolax = ["selectolax>=0.3,<1"]
 # All tools
 all = [
-    "curl_cffi>=0.15",
-    "crawl4ai>=0.9",
-    "scrapling>=0.4",
-    "scrapy>=2.17",
-    "crawlee[all]>=1.8",
-    "browser-use>=0.13",
-    "autoscraper>=1.1",
-    "markitdown[all]>=0.1",
-    "selectolax>=0.3",
+    "curl_cffi>=0.15,<1",
+    "crawl4ai>=0.9,<1",
+    "scrapling>=0.4,<1",
+    "scrapy>=2.17,<3",
+    "crawlee[all]>=1.8,<2",
+    "browser-use>=0.13,<1",
+    "autoscraper>=1.1,<2",
+    "markitdown[all]>=0.1,<1",
+    "selectolax>=0.3,<1",
 ]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
 

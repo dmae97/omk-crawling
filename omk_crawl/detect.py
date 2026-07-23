@@ -159,3 +159,31 @@ def detection_to_status(det: Detection) -> CrawlStatus:
         return CrawlStatus.ERROR  # other 4xx without markers
 
     return CrawlStatus.OK
+
+
+# --- robots.txt ---
+
+def check_robots_txt(url: str, user_agent: str = "*") -> bool:
+    """Check if a URL is allowed by the site's robots.txt.
+
+    Returns True if crawling is allowed (or robots.txt is unavailable).
+    Returns False if the URL is explicitly disallowed.
+
+    This is a best-effort check — it fetches and caches robots.txt
+    per domain. Network errors are treated as 'allowed' (fail-open).
+    """
+    import urllib.request  # noqa: F401 — needed by RobotFileParser internally
+    from urllib.parse import urlparse
+    from urllib.robotparser import RobotFileParser
+
+    parsed = urlparse(url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+
+    rp = RobotFileParser()
+    try:
+        rp.set_url(robots_url)
+        rp.read()
+    except Exception:
+        return True  # fail-open: can't read robots.txt → allow
+
+    return rp.can_fetch(user_agent, url)

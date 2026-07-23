@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 from omk_crawl.result import CrawlResult, CrawlStatus
@@ -27,6 +29,40 @@ class MockOKTool(BaseTool):
             status_code=200,
             html="<h1>Hello</h1>",
             markdown="# Hello",
+            tool=self.name,
+            elapsed_ms=10.0,
+        )
+
+
+class MockTransientTool(BaseTool):
+    """Fails with transient error N times, then succeeds."""
+
+    name = "mock_transient"
+    pip_package = ""
+
+    def __init__(self, fail_count: int = 1) -> None:
+        self.fail_count = fail_count
+        self.call_count = 0
+
+    def available(self) -> bool:
+        return True
+
+    def fetch(self, url: str, **kwargs: Any) -> CrawlResult:
+        self.call_count += 1
+        if self.call_count <= self.fail_count:
+            return CrawlResult(
+                url=url,
+                status=CrawlStatus.ERROR,
+                tool=self.name,
+                elapsed_ms=5.0,
+                error="ConnectionError: connection reset by peer",
+            )
+        return CrawlResult(
+            url=url,
+            status=CrawlStatus.OK,
+            status_code=200,
+            html="<h1>OK</h1>",
+            markdown="# OK",
             tool=self.name,
             elapsed_ms=10.0,
         )
@@ -361,3 +397,94 @@ class TestBogusTool:
         router = SmartRouter(tools=["bogus_tool"])
         r = router.crawl("https://example.com")
         assert r.status == CrawlStatus.TOOL_MISSING
+
+
+class TestRetry:
+    def test_transient_failure_retried(self):
+        """Transient errors (connection reset) should be retried."""
+        tool = MockTransientTool(fail_count=1)
+        router = _router_with([tool], max_retries=2, retry_delay=0.01)
+        r = router.crawl("https://example.com")
+        assert r.ok
+        assert tool.call_count == 2  # 1 fail + 1 success
+
+    def test_transient_exhausts_retries(self):
+        """If all retries fail, return the last error."""
+        tool = MockTransientTool(fail_count=99)
+        router = _router_with([tool], max_retries=2, retry_delay=0.01)
+        r = router.crawl("https://example.com")
+        assert not r.ok
+        assert tool.call_count == 3  # 1 initial + 2 retries
+
+    def test_non_transient_not_retried(self):
+        """Hard errors (500) should NOT be retried."""
+        router = _router_with([MockErrorTool()], max_retries=2, retry_delay=0.01)
+        r = router.crawl("https://example.com")
+        assert not r.ok
+        assert len(router.history) == 1  # no retry, just escalation stop
+
+    def test_is_transient_detection(self):
+        assert SmartRouter._is_transient(
+            CrawlResult(url="x", status=CrawlStatus.ERROR, error="Timeout: timed out")
+        )
+        assert SmartRouter._is_transient(
+            CrawlResult(url="x", status=CrawlStatus.ERROR,
+                        error="ConnectionError: connection reset")
+        )
+        assert not SmartRouter._is_transient(
+            CrawlResult(url="x", status=CrawlStatus.ERROR, error="ValueError: bad input")
+        )
+        assert not SmartRouter._is_transient(
+            CrawlResult(url="x", status=CrawlStatus.BLOCKED)
+        )
+
+
+class TestCrawlAsync:
+    def test_async_ok(self):
+        router = _router_with([MockOKTool()])
+        r = asyncio.run(router.crawl_async("https://example.com"))
+        assert r.ok
+        assert r.tool == "mock_ok"
+
+    def test_async_escalation(self):
+        router = _router_with([MockBlockedTool(), MockOKTool()])
+        r = asyncio.run(router.crawl_async("https://example.com"))
+        assert r.ok
+        assert r.tool == "mock_ok"
+        assert len(router.history) == 2
+
+    def test_async_empty_tools(self):
+        router = SmartRouter(tools=[])
+        r = asyncio.run(router.crawl_async("https://example.com"))
+        assert r.status == CrawlStatus.TOOL_MISSING
+
+
+class TestVerboseLogging:
+    def test_verbose_emits_log(self, caplog):
+        router = _router_with([MockOKTool()], verbose=True)
+        with caplog.at_level(logging.INFO, logger="omk_crawl"):
+            router.crawl("https://example.com")
+        assert any("Trying mock_ok" in msg for msg in caplog.messages)
+        assert any("succeeded" in msg for msg in caplog.messages)
+
+    def test_silent_without_verbose(self, caplog):
+        router = _router_with([MockOKTool()], verbose=False)
+        with caplog.at_level(logging.INFO, logger="omk_crawl"):
+            router.crawl("https://example.com")
+        assert len(caplog.messages) == 0
+
+
+class TestRobotsTxt:
+    def test_check_robots_txt_returns_bool(self):
+        from omk_crawl.detect import check_robots_txt
+
+        # Should not raise, returns bool
+        result = check_robots_txt("https://example.com/")
+        assert isinstance(result, bool)
+
+    def test_check_robots_txt_fail_open(self):
+        """Unreachable domain should return True (fail-open)."""
+        from omk_crawl.detect import check_robots_txt
+
+        result = check_robots_txt("https://this-domain-does-not-exist-12345.invalid/")
+        assert result is True

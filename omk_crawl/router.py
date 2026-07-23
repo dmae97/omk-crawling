@@ -10,13 +10,19 @@ Each step:
   3. If OK → return
   4. If blocked → escalate to next tool
   5. If all fail → return best attempt + diagnosis
+
+Retry: transient failures (timeout, connection reset) are retried with
+exponential backoff before escalating. Rate limiting: per-domain minimum
+delay between requests to avoid overwhelming target servers.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlparse
 
 from omk_crawl.detect import detect_block, missing_tools
 from omk_crawl.result import CrawlResult, CrawlStatus
@@ -24,6 +30,9 @@ from omk_crawl.tools import ESCALATION_CHAIN, get_tool
 from omk_crawl.tools.base import BaseTool
 
 logger = logging.getLogger("omk_crawl")
+
+# Per-domain rate limiter: {domain: last_request_timestamp}
+_last_request: dict[str, float] = {}
 
 
 @dataclass
@@ -50,6 +59,12 @@ class SmartRouter:
     tools: list[str] | None = None
     # Stop escalating after this many attempts
     max_attempts: int = 4
+    # Retry transient failures (timeout, connection reset) this many times
+    max_retries: int = 1
+    # Base delay for exponential backoff between retries (seconds)
+    retry_delay: float = 1.0
+    # Minimum seconds between requests to the same domain (rate limiting)
+    min_delay: float = 0.0
     # Verbose logging
     verbose: bool = False
     # Extra kwargs passed to each tool
@@ -73,7 +88,7 @@ class SmartRouter:
         return chain
 
     def crawl(self, url: str, **kwargs: Any) -> CrawlResult:
-        """Synchronous crawl with auto-escalation."""
+        """Synchronous crawl with auto-escalation and retry."""
         merged = {**self.tool_kwargs, **kwargs}
         chain = self._get_chain()
 
@@ -92,7 +107,8 @@ class SmartRouter:
 
         for i, tool in enumerate(chain[: self.max_attempts]):
             self._log(f"[{i + 1}/{len(chain)}] Trying {tool.name}...")
-            result = tool.fetch(url, **merged)
+            self._rate_limit(url)
+            result = self._fetch_with_retry(tool, url, **merged)
             self.history.append(result)
 
             # Run detection on the result for routing decisions
@@ -138,7 +154,7 @@ class SmartRouter:
         return CrawlResult(url=url, status=CrawlStatus.ERROR, error="No tools available")
 
     async def crawl_async(self, url: str, **kwargs: Any) -> CrawlResult:
-        """Async crawl with auto-escalation."""
+        """Async crawl with auto-escalation and retry."""
         merged = {**self.tool_kwargs, **kwargs}
         chain = self._get_chain()
 
@@ -152,7 +168,8 @@ class SmartRouter:
         best: CrawlResult | None = None
 
         for i, tool in enumerate(chain[: self.max_attempts]):
-            result = await tool.fetch_async(url, **merged)
+            self._rate_limit(url)
+            result = await self._fetch_async_with_retry(tool, url, **merged)
             self.history.append(result)
 
             det = detect_block(result.html, result.status_code)
@@ -237,6 +254,55 @@ class SmartRouter:
     def _log(self, msg: str) -> None:
         if self.verbose:
             logger.info(msg)
+
+    def _rate_limit(self, url: str) -> None:
+        """Enforce minimum delay between requests to the same domain."""
+        if self.min_delay <= 0:
+            return
+        domain = urlparse(url).netloc
+        now = time.monotonic()
+        last = _last_request.get(domain, 0.0)
+        elapsed = now - last
+        if elapsed < self.min_delay:
+            wait = self.min_delay - elapsed
+            self._log(f"  Rate limit: waiting {wait:.1f}s for {domain}")
+            time.sleep(wait)
+        _last_request[domain] = time.monotonic()
+
+    def _fetch_with_retry(self, tool: BaseTool, url: str, **kwargs: Any) -> CrawlResult:
+        """Fetch with exponential backoff retry for transient failures."""
+        result = tool.fetch(url, **kwargs)
+        for attempt in range(self.max_retries):
+            if not self._is_transient(result):
+                return result
+            delay = self.retry_delay * (2 ** attempt)
+            self._log(f"  Transient failure, retrying in {delay:.1f}s (attempt {attempt + 1})...")
+            time.sleep(delay)
+            result = tool.fetch(url, **kwargs)
+        return result
+
+    async def _fetch_async_with_retry(self, tool: BaseTool, url: str, **kwargs: Any) -> CrawlResult:
+        """Async fetch with exponential backoff retry for transient failures."""
+        import asyncio
+
+        result = await tool.fetch_async(url, **kwargs)
+        for attempt in range(self.max_retries):
+            if not self._is_transient(result):
+                return result
+            delay = self.retry_delay * (2 ** attempt)
+            self._log(f"  Transient failure, retrying in {delay:.1f}s (attempt {attempt + 1})...")
+            await asyncio.sleep(delay)
+            result = await tool.fetch_async(url, **kwargs)
+        return result
+
+    @staticmethod
+    def _is_transient(r: CrawlResult) -> bool:
+        """Check if a failure is transient (worth retrying)."""
+        if r.status is CrawlStatus.ERROR and r.error:
+            transient_markers = ("timeout", "timed out", "connection reset", "connection refused",
+                                 "connection aborted", "remote disconnected", "network unreachable")
+            return any(m in r.error.lower() for m in transient_markers)
+        return False
 
 
 # --- Module-level convenience ---

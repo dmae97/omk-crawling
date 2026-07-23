@@ -82,9 +82,22 @@ class Pipeline:
                     finally:
                         os.unlink(path)
                 except ImportError:
-                    # Strip tags as fallback
+                    # Strip tags as fallback (remove script/style first)
+                    import html as html_mod
                     import re
-                    r.markdown = re.sub(r"<[^>]+>", "", r.html)
+
+                    text = re.sub(
+                        r"<script[^>]*>.*?</script>", "", r.html,
+                        flags=re.DOTALL | re.IGNORECASE,
+                    )
+                    text = re.sub(
+                        r"<style[^>]*>.*?</style>", "", text,
+                        flags=re.DOTALL | re.IGNORECASE,
+                    )
+                    text = re.sub(r"<[^>]+>", "", text)
+                    text = html_mod.unescape(text).strip()
+                    if text:
+                        r.markdown = text
                     r.metadata["markdown_fallback"] = (
                         "tag-strip (pip install markitdown for proper conversion)"
                     )

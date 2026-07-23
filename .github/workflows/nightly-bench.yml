@@ -1,0 +1,31 @@
+name: Nightly Benchmark
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 03:00 UTC daily
+  workflow_dispatch: {}  # manual trigger
+
+permissions:
+  contents: write  # to commit benchmark results
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" pyyaml
+      - name: Run mock benchmark (CI-safe)
+        run: python scripts/bench.py --mock --runs 3 --out benchmarks/nightly.json
+      - name: Run polite live benchmark (static + js only)
+        run: python scripts/bench.py --category static,js --live-only --runs 2 --out benchmarks/nightly-live.json
+        continue-on-error: true  # network flakiness shouldn't fail the workflow
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add benchmarks/nightly*.json
+          git diff --staged --quiet || git commit -m "chore: nightly benchmark results [skip ci]"
+          git push

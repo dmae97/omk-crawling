@@ -19,8 +19,8 @@ import sys
 from pathlib import Path
 
 from omk_crawl.detect import available_tools, missing_tools
-from omk_crawl.router import SmartRouter, crawl
 from omk_crawl.result import CrawlResult
+from omk_crawl.router import SmartRouter, crawl
 
 
 def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None = None) -> None:
@@ -53,14 +53,20 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="omk-crawl",
         description="Smart web crawling toolbox — auto-routes across 10 tools",
-        epilog="This product uses Crawl4AI (https://github.com/unclecode/crawl4ai) for web data extraction.",
+        epilog=(
+            "This product uses Crawl4AI"
+            " (https://github.com/unclecode/crawl4ai) for web data extraction."
+        ),
     )
     parser.add_argument("url", nargs="?", help="URL or file path to crawl/convert")
     parser.add_argument("--tool", "-t", help="Force a specific tool (skip auto-escalation)")
     parser.add_argument("--output", "-o", help="Save output to file")
     parser.add_argument("--json", "-j", action="store_true", help="JSON output")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose escalation log")
-    parser.add_argument("--diagnose", action="store_true", help="Dry-run: show what tools would be tried")
+    parser.add_argument(
+        "--diagnose", action="store_true",
+        help="Dry-run: show what tools would be tried",
+    )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
     parser.add_argument("--version", action="version", version="omk-crawl 2.0.0")
 
@@ -76,7 +82,7 @@ def main(argv: list[str] | None = None) -> None:
             print("\nMissing tools:")
             for t in miss:
                 print(f"  ❌ {t}")
-            print(f"\nInstall all: pip install omk-crawl[all]")
+            print("\nInstall all: pip install omk-crawl[all]")
         return
 
     if not args.url:

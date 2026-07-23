@@ -65,7 +65,9 @@ def missing_tools() -> list[str]:
 # --- Response analysis ---
 
 _CF_MARKERS = ("cf-browser-verification", "cf_chl_opt", "turnstile", "challenge-platform")
-_JS_MARKERS = ("<noscript>", "id=\"__next\"", "id=\"root\"", "id=\"app\"", "ng-app", "data-reactroot")
+_JS_MARKERS = (
+    "<noscript>", 'id="__next"', 'id="root"', 'id="app"', "ng-app", "data-reactroot",
+)
 _WAF_MARKERS = ("access denied", "blocked", "captcha", "are you a robot", "unusual traffic")
 
 

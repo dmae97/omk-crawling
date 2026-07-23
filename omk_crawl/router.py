@@ -14,11 +14,10 @@ Each step:
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from omk_crawl.detect import BlockType, detect_block, missing_tools
+from omk_crawl.detect import missing_tools
 from omk_crawl.result import CrawlResult, CrawlStatus
 from omk_crawl.tools import ESCALATION_CHAIN, get_tool
 from omk_crawl.tools.base import BaseTool
@@ -76,7 +75,10 @@ class SmartRouter:
             return CrawlResult(
                 url=url,
                 status=CrawlStatus.TOOL_MISSING,
-                error=f"No crawling tools installed. Try: pip install curl_cffi  (missing: {missing})",
+                error=(
+                    "No crawling tools installed."
+                    f" Try: pip install curl_cffi  (missing: {missing})"
+                ),
             )
 
         best: CrawlResult | None = None
@@ -99,7 +101,10 @@ class SmartRouter:
                 self._log(f"  ✓ {tool.name} succeeded ({result.elapsed_ms:.0f}ms)")
                 return result
 
-            self._log(f"  ✗ {tool.name}: {result.status.value} — {result.error or result.metadata.get('detection', '')}")
+            detail = result.error or result.metadata.get("detection", "")
+            self._log(
+                f"  ✗ {tool.name}: {result.status.value} — {detail}"
+            )
 
             # Keep best attempt for fallback
             if best is None or self._score(result) > self._score(best):
@@ -107,7 +112,7 @@ class SmartRouter:
 
             # Don't escalate if it's a hard error (not a block)
             if result.status is CrawlStatus.ERROR and not result.blocked:
-                self._log(f"  Hard error, stopping escalation.")
+                self._log("  Hard error, stopping escalation.")
                 break
 
         # All tools failed — return best attempt
@@ -159,7 +164,7 @@ class SmartRouter:
             "available_tools": [t.name for t in chain],
             "missing_tools": missing_tools(),
             "escalation_order": [t.name for t in chain[: self.max_attempts]],
-            "install_hint": f"pip install omk-crawl[all]",
+            "install_hint": "pip install omk-crawl[all]",
         }
 
     @staticmethod
@@ -193,7 +198,9 @@ class SmartRouter:
 
 # --- Module-level convenience ---
 
-def crawl(url: str, *, tool: str | None = None, verbose: bool = False, **kwargs: Any) -> CrawlResult:
+def crawl(
+    url: str, *, tool: str | None = None, verbose: bool = False, **kwargs: Any,
+) -> CrawlResult:
     """One-liner crawl with auto-escalation.
 
     >>> from omk_crawl import crawl

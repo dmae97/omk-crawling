@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from omk_crawl.result import CrawlResult, CrawlStatus
 from omk_crawl.router import SmartRouter
@@ -68,8 +69,10 @@ class Pipeline:
                 return r  # already have markdown
             if r.html:
                 try:
+                    import os
+                    import tempfile
+
                     from markitdown import MarkItDown
-                    import tempfile, os
 
                     with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False) as f:
                         f.write(r.html)
@@ -82,7 +85,9 @@ class Pipeline:
                     # Strip tags as fallback
                     import re
                     r.markdown = re.sub(r"<[^>]+>", "", r.html)
-                    r.metadata["markdown_fallback"] = "tag-strip (pip install markitdown for proper conversion)"
+                    r.metadata["markdown_fallback"] = (
+                        "tag-strip (pip install markitdown for proper conversion)"
+                    )
             return r
         self.steps.append(_convert)
         return self

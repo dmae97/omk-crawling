@@ -38,3 +38,15 @@ ruff check omk_crawl/ tests/
 - Include tests
 - Keep commits atomic with clear messages
 - CI must pass (lint + test + build)
+
+## Shoutouts
+
+This project went from 63/100 to 90+ through iterative code review.
+Huge thanks to everyone who contributed feedback and tooling:
+
+- **dmae97** — project author, all commits, driving the review-fix cycles
+- **OMK (Open Multi-agent Kit)** — coding agent harness that coordinated the implementation
+- **Claude (Anthropic)** — AI pair programmer for all 4 review-fix rounds
+- **ruff** — linting that caught unused imports, import ordering, and style issues
+- **pytest** — 71 tests keeping everything honest through every refactor
+- **The code reviewers** — 4 rounds of brutally specific feedback (CF 503 escalation halt, silent verbose, markdown pollution, dead code, robots.txt wiring, thread safety, timeout honesty) that turned a working prototype into production-quality code

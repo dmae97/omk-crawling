@@ -63,44 +63,9 @@ class Pipeline:
         return self
 
     def to_markdown(self) -> Pipeline:
-        """Step 3: ensure markdown output (uses markitdown for files, crawl4ai for web)."""
+        """Step 3: ensure markdown output (delegates to SmartRouter._ensure_markdown)."""
         def _convert(r: CrawlResult) -> CrawlResult:
-            if r.markdown:
-                return r  # already have markdown
-            if r.html:
-                try:
-                    import os
-                    import tempfile
-
-                    from markitdown import MarkItDown
-
-                    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False) as f:
-                        f.write(r.html)
-                        path = f.name
-                    try:
-                        r.markdown = MarkItDown().convert(path).text_content
-                    finally:
-                        os.unlink(path)
-                except ImportError:
-                    # Strip tags as fallback (remove script/style first)
-                    import html as html_mod
-                    import re
-
-                    text = re.sub(
-                        r"<script[^>]*>.*?</script>", "", r.html,
-                        flags=re.DOTALL | re.IGNORECASE,
-                    )
-                    text = re.sub(
-                        r"<style[^>]*>.*?</style>", "", text,
-                        flags=re.DOTALL | re.IGNORECASE,
-                    )
-                    text = re.sub(r"<[^>]+>", "", text)
-                    text = html_mod.unescape(text).strip()
-                    if text:
-                        r.markdown = text
-                    r.metadata["markdown_fallback"] = (
-                        "tag-strip (pip install markitdown for proper conversion)"
-                    )
+            SmartRouter._ensure_markdown(r)
             return r
         self.steps.append(_convert)
         return self

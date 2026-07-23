@@ -19,12 +19,13 @@ delay between requests to avoid overwhelming target servers.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-from omk_crawl.detect import detect_block, missing_tools
+from omk_crawl.detect import check_robots_txt, detect_block, missing_tools
 from omk_crawl.result import CrawlResult, CrawlStatus
 from omk_crawl.tools import ESCALATION_CHAIN, get_tool
 from omk_crawl.tools.base import BaseTool
@@ -33,6 +34,7 @@ logger = logging.getLogger("omk_crawl")
 
 # Per-domain rate limiter: {domain: last_request_timestamp}
 _last_request: dict[str, float] = {}
+_rate_lock = threading.Lock()
 
 
 @dataclass
@@ -64,7 +66,9 @@ class SmartRouter:
     # Base delay for exponential backoff between retries (seconds)
     retry_delay: float = 1.0
     # Minimum seconds between requests to the same domain (rate limiting)
-    min_delay: float = 0.0
+    min_delay: float = 0.5
+    # Check robots.txt before crawling
+    respect_robots: bool = True
     # Verbose logging
     verbose: bool = False
     # Extra kwargs passed to each tool
@@ -89,6 +93,12 @@ class SmartRouter:
 
     def crawl(self, url: str, **kwargs: Any) -> CrawlResult:
         """Synchronous crawl with auto-escalation and retry."""
+        if self.respect_robots and not check_robots_txt(url):
+            return CrawlResult(
+                url=url,
+                status=CrawlStatus.ERROR,
+                error="Blocked by robots.txt. Use respect_robots=False to override.",
+            )
         merged = {**self.tool_kwargs, **kwargs}
         chain = self._get_chain()
 
@@ -107,7 +117,6 @@ class SmartRouter:
 
         for i, tool in enumerate(chain[: self.max_attempts]):
             self._log(f"[{i + 1}/{len(chain)}] Trying {tool.name}...")
-            self._rate_limit(url)
             result = self._fetch_with_retry(tool, url, **merged)
             self.history.append(result)
 
@@ -155,6 +164,12 @@ class SmartRouter:
 
     async def crawl_async(self, url: str, **kwargs: Any) -> CrawlResult:
         """Async crawl with auto-escalation and retry."""
+        if self.respect_robots and not check_robots_txt(url):
+            return CrawlResult(
+                url=url,
+                status=CrawlStatus.ERROR,
+                error="Blocked by robots.txt. Use respect_robots=False to override.",
+            )
         merged = {**self.tool_kwargs, **kwargs}
         chain = self._get_chain()
 
@@ -168,7 +183,6 @@ class SmartRouter:
         best: CrawlResult | None = None
 
         for i, tool in enumerate(chain[: self.max_attempts]):
-            self._rate_limit(url)
             result = await self._fetch_async_with_retry(tool, url, **merged)
             self.history.append(result)
 
@@ -232,19 +246,46 @@ class SmartRouter:
     def _ensure_markdown(r: CrawlResult) -> None:
         """Convert HTML to markdown if the tool didn't provide it.
 
-        Strips <script>/<style> blocks and unescapes HTML entities.
-        If markitdown is available, uses it for proper conversion.
-        Otherwise falls back to tag-stripping. If the result is trivial
+        Tries markitdown first (proper HTML→Markdown conversion).
+        Falls back to tag-stripping with <script>/<style> removal
+        and HTML entity unescaping. If the result is trivial
         (empty after stripping), leaves markdown as None so that
         Pipeline.to_markdown() can handle it later.
         """
         if r.markdown or not r.html:
             return
+        # Try markitdown for proper conversion
+        try:
+            import os
+            import tempfile
+
+            from markitdown import MarkItDown
+
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".html", delete=False,
+            ) as f:
+                f.write(r.html)
+                path = f.name
+            try:
+                r.markdown = MarkItDown().convert(path).text_content
+                r.metadata.setdefault("markdown_fallback", "markitdown")
+            finally:
+                os.unlink(path)
+            return
+        except ImportError:
+            pass
+        # Fallback: strip tags
         import html as html_mod
         import re
 
-        text = re.sub(r"<script[^>]*>.*?</script>", "", r.html, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            r"<script[^>]*>.*?</script>", "", r.html,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        text = re.sub(
+            r"<style[^>]*>.*?</style>", "", text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
         text = re.sub(r"<[^>]+>", "", text)
         text = html_mod.unescape(text).strip()
         if text:
@@ -260,17 +301,19 @@ class SmartRouter:
         if self.min_delay <= 0:
             return
         domain = urlparse(url).netloc
-        now = time.monotonic()
-        last = _last_request.get(domain, 0.0)
-        elapsed = now - last
-        if elapsed < self.min_delay:
-            wait = self.min_delay - elapsed
-            self._log(f"  Rate limit: waiting {wait:.1f}s for {domain}")
-            time.sleep(wait)
-        _last_request[domain] = time.monotonic()
+        with _rate_lock:
+            now = time.monotonic()
+            last = _last_request.get(domain, 0.0)
+            elapsed = now - last
+            if elapsed < self.min_delay:
+                wait = self.min_delay - elapsed
+                self._log(f"  Rate limit: waiting {wait:.1f}s for {domain}")
+                time.sleep(wait)
+            _last_request[domain] = time.monotonic()
 
     def _fetch_with_retry(self, tool: BaseTool, url: str, **kwargs: Any) -> CrawlResult:
-        """Fetch with exponential backoff retry for transient failures."""
+        """Fetch with rate limiting and exponential backoff retry."""
+        self._rate_limit(url)
         result = tool.fetch(url, **kwargs)
         for attempt in range(self.max_retries):
             if not self._is_transient(result):
@@ -278,13 +321,17 @@ class SmartRouter:
             delay = self.retry_delay * (2 ** attempt)
             self._log(f"  Transient failure, retrying in {delay:.1f}s (attempt {attempt + 1})...")
             time.sleep(delay)
+            self._rate_limit(url)
             result = tool.fetch(url, **kwargs)
         return result
 
-    async def _fetch_async_with_retry(self, tool: BaseTool, url: str, **kwargs: Any) -> CrawlResult:
-        """Async fetch with exponential backoff retry for transient failures."""
+    async def _fetch_async_with_retry(
+        self, tool: BaseTool, url: str, **kwargs: Any,
+    ) -> CrawlResult:
+        """Async fetch with rate limiting and exponential backoff retry."""
         import asyncio
 
+        self._rate_limit(url)
         result = await tool.fetch_async(url, **kwargs)
         for attempt in range(self.max_retries):
             if not self._is_transient(result):
@@ -292,6 +339,7 @@ class SmartRouter:
             delay = self.retry_delay * (2 ** attempt)
             self._log(f"  Transient failure, retrying in {delay:.1f}s (attempt {attempt + 1})...")
             await asyncio.sleep(delay)
+            self._rate_limit(url)
             result = await tool.fetch_async(url, **kwargs)
         return result
 
@@ -308,7 +356,8 @@ class SmartRouter:
 # --- Module-level convenience ---
 
 def crawl(
-    url: str, *, tool: str | None = None, verbose: bool = False, **kwargs: Any,
+    url: str, *, tool: str | None = None, verbose: bool = False,
+    respect_robots: bool = True, min_delay: float = 0.5, **kwargs: Any,
 ) -> CrawlResult:
     """One-liner crawl with auto-escalation.
 
@@ -319,6 +368,8 @@ def crawl(
     router = SmartRouter(
         tools=[tool] if tool else None,
         verbose=verbose,
+        respect_robots=respect_robots,
+        min_delay=min_delay,
     )
     return router.crawl(url, **kwargs)
 

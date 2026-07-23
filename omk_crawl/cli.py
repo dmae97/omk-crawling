@@ -64,6 +64,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--json", "-j", action="store_true", help="JSON output")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose escalation log")
     parser.add_argument(
+        "--no-robots", action="store_true",
+        help="Skip robots.txt check (use responsibly)",
+    )
+    parser.add_argument(
+        "--min-delay", type=float, default=0.5,
+        help="Minimum seconds between requests to same domain (default: 0.5)",
+    )
+    parser.add_argument(
         "--diagnose", action="store_true",
         help="Dry-run: show what tools would be tried",
     )
@@ -113,7 +121,10 @@ def main(argv: list[str] | None = None) -> None:
             format="  [omk-crawl] %(message)s",
         )
 
-    r = crawl(args.url, tool=args.tool, verbose=args.verbose)
+    r = crawl(
+        args.url, tool=args.tool, verbose=args.verbose,
+        respect_robots=not args.no_robots, min_delay=args.min_delay,
+    )
 
     if args.verbose:
         print(f"\n--- {r.summary()} ---\n", file=sys.stderr)

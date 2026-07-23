@@ -42,7 +42,10 @@ class Crawl4aiTool(BaseTool):
         try:
             from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 
-            cfg = CrawlerRunConfig(cache_mode=CacheMode.BYPASS)
+            cfg = CrawlerRunConfig(
+                cache_mode=CacheMode.BYPASS,
+                page_timeout=kwargs.get("timeout", 30) * 1000,
+            )
             async with AsyncWebCrawler() as crawler:
                 r = await crawler.arun(url, config=cfg)
 

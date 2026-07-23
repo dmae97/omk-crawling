@@ -22,7 +22,11 @@ class ScraplingTool(BaseTool):
         try:
             from scrapling import StealthyFetcher
 
-            page = StealthyFetcher.fetch(url, headless=kwargs.get("headless", True))
+            page = StealthyFetcher.fetch(
+                url,
+                headless=kwargs.get("headless", True),
+                timeout=kwargs.get("timeout", 30),
+            )
 
             html = page.html_content if hasattr(page, "html_content") else str(page)
             status_code = page.status if hasattr(page, "status") else None

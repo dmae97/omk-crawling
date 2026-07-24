@@ -94,7 +94,7 @@ class TestToolRegistry:
 
     def test_escalation_order(self):
         names = [cls().name for cls in ESCALATION_CHAIN]
-        assert names == ["curl_cffi", "crawl4ai", "scrapling", "browser_use"]
+        assert names == ["insane_search", "curl_cffi", "crawl4ai", "scrapling", "browser_use"]
 
     def test_get_tool(self):
         t = get_tool("curl_cffi")

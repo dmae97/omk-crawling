@@ -18,6 +18,9 @@ class BlockType(Flag):
     TLS_FINGERPRINT = auto()  # JA3/HTTP2 fingerprint rejection
     JS_REQUIRED = auto()  # empty body / noscript / JS framework
     CLOUDFLARE = auto()  # CF challenge / Turnstile
+    AKAMAI = auto()  # Akamai Bot Manager / mPulse
+    DATADOME = auto()  # DataDome CAPTCHA
+    IMPERVA = auto()  # Imperva/Incapsula
     WAF = auto()  # generic WAF (403 + challenge page)
     RATE_LIMIT = auto()  # 429
     AUTH_REQUIRED = auto()  # 401 / login redirect
@@ -68,11 +71,33 @@ def missing_tools() -> list[str]:
 
 # --- Response analysis ---
 
-_CF_MARKERS = ("cf-browser-verification", "cf_chl_opt", "turnstile", "challenge-platform")
-_JS_MARKERS = (
-    "<noscript>", 'id="__next"', 'id="root"', 'id="app"', "ng-app", "data-reactroot",
+_CF_MARKERS = (
+    "cf-browser-verification", "cf_chl_opt", "cf_chl_rc",
+    "turnstile", "challenge-platform", "cloudflare",
+    "cf-ray", "__cf_bm", "cf_clearance",
 )
-_WAF_MARKERS = ("access denied", "blocked", "captcha", "are you a robot", "unusual traffic")
+_AKAMAI_MARKERS = (
+    "akamai", "ak-bmsc", "bot manager",
+    "_abck", "bm_sz", "akam_rum",
+)
+_DATADOME_MARKERS = (
+    "datadome", "dd-bypass", "geo-captcha",
+    "datadome-client", "datadome-captcha",
+)
+_IMPERVA_MARKERS = (
+    "imperva", "incapsula", "visid_incap",
+    "incap_ses", "_incap_", "reese84",
+)
+_JS_MARKERS = (
+    "<noscript>", 'id="__next"', 'id="root"', 'id="app"',
+    "ng-app", "data-reactroot", "data-react-helmet",
+)
+_WAF_MARKERS = (
+    "access denied", "blocked", "captcha",
+    "are you a robot", "unusual traffic",
+    "security check", "ddos-guard", "perimeterx",
+    "press & hold", "please verify", "checking your browser",
+)
 
 
 def detect_block(html: str | None, status_code: int | None) -> Detection:
@@ -100,12 +125,33 @@ def detect_block(html: str | None, status_code: int | None) -> Detection:
 
     lower = html.lower()
 
-    # Cloudflare
+    # Cloudflare (check first — CF 503 often shows minimal markers)
     if any(m in lower for m in _CF_MARKERS):
         d.block |= BlockType.CLOUDFLARE
         d.needs_stealth = True
         d.confidence = 0.9
         d.detail = "Cloudflare challenge detected"
+
+    # Akamai
+    if any(m in lower for m in _AKAMAI_MARKERS):
+        d.block |= BlockType.AKAMAI
+        d.needs_stealth = True
+        d.confidence = 0.85
+        d.detail = "Akamai Bot Manager detected"
+
+    # DataDome
+    if any(m in lower for m in _DATADOME_MARKERS):
+        d.block |= BlockType.DATADOME
+        d.needs_stealth = True
+        d.confidence = 0.85
+        d.detail = "DataDome CAPTCHA detected"
+
+    # Imperva/Incapsula
+    if any(m in lower for m in _IMPERVA_MARKERS):
+        d.block |= BlockType.IMPERVA
+        d.needs_stealth = True
+        d.confidence = 0.8
+        d.detail = "Imperva/Incapsula detected"
 
     # JS-required
     if any(m in lower for m in _JS_MARKERS) and len(html) < 5000:

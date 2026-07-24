@@ -18,21 +18,26 @@ from __future__ import annotations
 from omk_crawl.detect import BlockType
 
 # Default ladder, lightest → heaviest.
-DEFAULT_ORDER: list[str] = ["curl_cffi", "crawl4ai", "scrapling", "browser_use"]
+DEFAULT_ORDER: list[str] = ["insane_search", "curl_cffi", "crawl4ai", "scrapling", "browser_use"]
 
 # BlockType → preferred tool order. Rationale:
-#   TLS_FINGERPRINT → a different curl_cffi impersonation often passes; real
-#                     browsers (scrapling / crawl4ai) always clear TLS.
+#   TLS_FINGERPRINT → different curl_cffi impersonation often passes; insane_search
+#                     rotates 8 profiles; real browsers always clear TLS.
 #   JS_REQUIRED     → the cheapest renderer (crawl4ai) executes JavaScript.
-#   CLOUDFLARE/WAF  → scrapling's stealth browser is built for anti-bot walls;
+#   CLOUDFLARE/AKAMAI/DATADOME/IMPERVA/WAF → scrapling's stealth or insane_search;
 #                     fall back to crawl4ai, then the LLM agent.
 #   RATE_LIMIT      → not a tool problem; keep the ladder (caller backs off).
 #   AUTH_REQUIRED   → we do NOT bypass auth; empty list = no escalation.
 ROUTE_TABLE: dict[BlockType, list[str]] = {
-    BlockType.TLS_FINGERPRINT: ["curl_cffi", "scrapling", "crawl4ai", "browser_use"],
+    BlockType.TLS_FINGERPRINT: [
+        "insane_search", "curl_cffi", "scrapling", "crawl4ai", "browser_use",
+    ],
     BlockType.JS_REQUIRED: ["crawl4ai", "scrapling", "browser_use"],
-    BlockType.CLOUDFLARE: ["scrapling", "crawl4ai", "browser_use"],
-    BlockType.WAF: ["scrapling", "crawl4ai", "browser_use"],
+    BlockType.CLOUDFLARE: ["insane_search", "scrapling", "crawl4ai", "browser_use"],
+    BlockType.AKAMAI: ["insane_search", "scrapling", "crawl4ai", "browser_use"],
+    BlockType.DATADOME: ["insane_search", "scrapling", "crawl4ai", "browser_use"],
+    BlockType.IMPERVA: ["insane_search", "scrapling", "crawl4ai", "browser_use"],
+    BlockType.WAF: ["insane_search", "scrapling", "crawl4ai", "browser_use"],
     BlockType.RATE_LIMIT: DEFAULT_ORDER,
     BlockType.AUTH_REQUIRED: [],
 }
@@ -42,6 +47,9 @@ ROUTE_TABLE: dict[BlockType, list[str]] = {
 _PRIORITY: tuple[BlockType, ...] = (
     BlockType.AUTH_REQUIRED,
     BlockType.CLOUDFLARE,
+    BlockType.AKAMAI,
+    BlockType.DATADOME,
+    BlockType.IMPERVA,
     BlockType.WAF,
     BlockType.TLS_FINGERPRINT,
     BlockType.JS_REQUIRED,

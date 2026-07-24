@@ -7,18 +7,22 @@ from omk_crawl.tools.base import BaseTool
 from omk_crawl.tools.browser_use_tool import BrowserUseTool
 from omk_crawl.tools.crawl4ai_tool import Crawl4aiTool
 from omk_crawl.tools.curl_cffi_tool import CurlCffiTool
+from omk_crawl.tools.insane_search_tool import InsaneSearchTool
 from omk_crawl.tools.markitdown_tool import MarkitdownTool
 from omk_crawl.tools.scrapling_tool import ScraplingTool
 
 # Escalation order: lightest → heaviest
+# InsaneSearch runs first as a hyper-aggressive single-shot breaker.
 ESCALATION_CHAIN: list[type[BaseTool]] = [
-    CurlCffiTool,   # ① TLS fingerprint, no browser, instant
-    Crawl4aiTool,   # ② Browser render + Markdown
-    ScraplingTool,  # ③ Stealth browser + anti-bot bypass
-    BrowserUseTool, # ④ LLM agent drives browser (last resort)
+    InsaneSearchTool,  # ⓪ 8-profile TLS rotation + stealth browser
+    CurlCffiTool,      # ① TLS fingerprint, no browser, instant
+    Crawl4aiTool,      # ② Browser render + Markdown
+    ScraplingTool,     # ③ Stealth browser + anti-bot bypass
+    BrowserUseTool,    # ④ LLM agent drives browser (last resort)
 ]
 
 ALL_TOOLS: dict[str, type[BaseTool]] = {
+    "insane_search": InsaneSearchTool,
     "curl_cffi": CurlCffiTool,
     "crawl4ai": Crawl4aiTool,
     "scrapling": ScraplingTool,

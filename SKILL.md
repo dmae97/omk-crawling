@@ -7,7 +7,7 @@ description: 'OMK 웹·데이터 수집/추출 툴박스 — 10개 도구를 목
   insane-search(단일 차단 URL). 크롤링·스크래핑·딥크롤·RAG 수집·마크다운 변환·안티봇
   우회·브라우저 자동화·모바일 앱 수집 필요 시 사용.'
 license: Apache-2.0
-version: 2.0.0
+version: 2.6.0
 metadata:
   category: research
   locale: ko-KR
@@ -25,7 +25,7 @@ metadata:
     - { name: markitdown,       repo: https://github.com/microsoft/markitdown,      pkg: 'pip:markitdown[all]==0.1.6', license: MIT }
     - { name: scrcpy,           repo: https://github.com/Genymobile/scrcpy,         pkg: 'C tool (apt/brew/choco) v4.1', license: Apache-2.0 }
     - { name: scrapling,        repo: https://github.com/d4vinci/Scrapling,         pkg: 'pip:scrapling==0.4.11',      license: BSD-3-Clause }
-    - { name: insane-search,    repo: https://github.com/fivetaku/gptaku_plugins,   pkg: 'gptaku plugin',             license: GPTaku }
+    - { name: insane-search,    repo: https://github.com/fivetaku/gptaku_plugins,   pkg: 'gptaku plugin / built-in adapter', license: GPTaku }
 ---
 
 # omk-crawling — 웹·데이터 수집/추출 툴박스
@@ -66,6 +66,7 @@ metadata:
 
 ## 도구는 결합된다
 
+- **차단된 단일 URL** → `insane_search`(8개 프로필 TLS 로테이션 + 스텔스 브라우저)로 돌파 → 결과를 다른 도구로 파싱.
 - **핑거프린트 벽** → `curl_cffi`로 뚫고 → `crawl4ai arun("raw:<html>")` 또는 `scrapling.Selector`로 구조화.
 - **로그인 뒤 크롤** → `browser-use`로 로그인·세션 확보 → 쿠키를 `scrapy`/`crawlee`/`crawl4ai`에 넘겨 대량 수집.
 - **문서 사이트 RAG** → `crawl4ai` 딥크롤 → 첨부 PDF/PPTX는 `markitdown`으로 Markdown → 합쳐서 색인.

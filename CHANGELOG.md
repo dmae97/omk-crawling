@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.6.0] — 2026-07-24
+
+### Added — insane-search adapter (first-line breaker)
+
+- **`InsaneSearchTool`** — hyper-aggressive single-URL unblocker:
+  - 8 TLS impersonation profiles (Chrome 124/120/116/110, Safari 17/15,
+    Edge 101, Firefox 133) rotated per attempt
+  - Real browser header spoofing (Sec-CH-UA, Sec-Fetch-*, Accept, Referer)
+  - Playwright stealth browser last-resort with anti-webdriver injection
+  - Block-page detection in 2xx responses (captcha/WAF markers)
+- Placed first in ``ESCALATION_CHAIN`` (position ⓪)
+- Registered as ``insane_search`` in ``ALL_TOOLS`` (7 total)
+
+### Enhanced — WAF/CDN detection
+
+- **Akamai**: Bot Manager / mPulse markers (``_abck``, ``bm_sz``, ``ak-bmsc``)
+- **DataDome**: CAPTCHA markers (``datadome-client``, ``dd-bypass``)
+- **Imperva/Incapsula**: (``visid_incap``, ``incap_ses``, ``reese84``)
+- Expanded Cloudflare markers (``cf-ray``, ``__cf_bm``, ``cf_clearance``)
+- Expanded generic WAF markers (``ddos-guard``, ``perimeterx``, security checks)
+
+### Enhanced — routing table
+
+- All 7 block types have preferred tool chains
+- Akamai/DataDome/Imperva route to ``insane_search`` → ``scrapling`` → ``crawl4ai``
+- ``DEFAULT_ORDER`` now includes ``insane_search`` as first rung
+
 ## [2.5.0] — 2026-07-24
 
 Quality release driven by external code review — shifts weight from docs/demo

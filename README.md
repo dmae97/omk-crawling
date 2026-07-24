@@ -76,6 +76,8 @@ across 6 adapters automatically** (4 in the escalation chain), escalating from t
 
 ```
 curl_cffi (0ms browser) → crawl4ai (render) → scrapling (stealth) → browser-use (LLM agent)
+
+> **v2.6.0**: `insane_search` now leads the chain — 8 TLS profiles + stealth browser.
 ```
 
 ---
@@ -198,7 +200,7 @@ asyncio.run(main())
 
 ## Tool Router
 
-**6 runtime adapters** — 4 core in the auto-escalation chain (curl_cffi → crawl4ai → scrapling → browser-use) plus 2 auxiliary (autoscraper, markitdown). The skill *catalog* references 10 tools overall; the remainder (scrapy, crawlee, scrcpy, curl-impersonate, insane-search) are documented in [`references/`](references/) for manual use, not wired into the router.
+**7 runtime adapters** — 5 core in the auto-escalation chain (insane_search → curl_cffi → crawl4ai → scrapling → browser-use) plus 2 auxiliary (autoscraper, markitdown). The skill *catalog* references 10 tools overall; the remainder (scrapy, crawlee, scrcpy, curl-impersonate) are documented in [`references/`](references/) for manual use, not wired into the router.
 
 | Need | Tool | Layer | Status |
 |------|------|-------|

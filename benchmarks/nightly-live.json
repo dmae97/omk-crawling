@@ -1,0 +1,91 @@
+{
+  "mode": "live",
+  "runs": 2,
+  "generated_at": "2026-07-25T05:46:05+0000",
+  "results": [
+    {
+      "name": "example.com",
+      "category": "static",
+      "url": "https://example.com",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    },
+    {
+      "name": "httpbin-html",
+      "category": "static",
+      "url": "https://httpbin.org/html",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    },
+    {
+      "name": "books.toscrape",
+      "category": "static",
+      "url": "https://books.toscrape.com/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    },
+    {
+      "name": "quotes.toscrape",
+      "category": "static",
+      "url": "https://quotes.toscrape.com/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    },
+    {
+      "name": "info.cern",
+      "category": "static",
+      "url": "https://info.cern.ch/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    },
+    {
+      "name": "quotes-js",
+      "category": "js",
+      "url": "https://quotes.toscrape.com/js/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    },
+    {
+      "name": "httpbin-root",
+      "category": "js",
+      "url": "https://httpbin.org/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 0.6,
+      "p95_ms": 0.6,
+      "bytes": 0,
+      "tool_path": [],
+      "cost_proxy": 0
+    }
+  ]
+}

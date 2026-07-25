@@ -1,0 +1,307 @@
+{
+  "mode": "mock",
+  "runs": 3,
+  "generated_at": "2026-07-25T05:46:05+0000",
+  "results": [
+    {
+      "name": "example.com",
+      "category": "static",
+      "url": "https://example.com",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 134.4,
+      "p95_ms": 139.9,
+      "bytes": 15434,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "httpbin-html",
+      "category": "static",
+      "url": "https://httpbin.org/html",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 101.2,
+      "p95_ms": 133.1,
+      "bytes": 14280,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "books.toscrape",
+      "category": "static",
+      "url": "https://books.toscrape.com/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 109.1,
+      "p95_ms": 129.8,
+      "bytes": 73426,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "quotes.toscrape",
+      "category": "static",
+      "url": "https://quotes.toscrape.com/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 131.4,
+      "p95_ms": 140.5,
+      "bytes": 22926,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "info.cern",
+      "category": "static",
+      "url": "https://info.cern.ch/",
+      "success_at_1": true,
+      "success_at_final": true,
+      "p50_ms": 137.9,
+      "p95_ms": 151.9,
+      "bytes": 46118,
+      "tool_path": [
+        "curl_cffi"
+      ],
+      "cost_proxy": 0
+    },
+    {
+      "name": "quotes-js",
+      "category": "js",
+      "url": "https://quotes.toscrape.com/js/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 766.0,
+      "p95_ms": 969.1,
+      "bytes": 7695,
+      "tool_path": [
+        "curl_cffi",
+        "crawl4ai"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "httpbin-root",
+      "category": "js",
+      "url": "https://httpbin.org/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 776.2,
+      "p95_ms": 1021.2,
+      "bytes": 40427,
+      "tool_path": [
+        "curl_cffi",
+        "crawl4ai"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "todomvc",
+      "category": "js",
+      "url": "https://todomvc.com/examples/react/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 979.8,
+      "p95_ms": 1081.9,
+      "bytes": 31871,
+      "tool_path": [
+        "curl_cffi",
+        "crawl4ai"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "angularjs",
+      "category": "js",
+      "url": "https://angularjs.org/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 1067.9,
+      "p95_ms": 1101.2,
+      "bytes": 61429,
+      "tool_path": [
+        "curl_cffi",
+        "crawl4ai"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "vuejs",
+      "category": "js",
+      "url": "https://vuejs.org/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 814.3,
+      "p95_ms": 986.9,
+      "bytes": 36993,
+      "tool_path": [
+        "curl_cffi",
+        "crawl4ai"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "httpbin-ua",
+      "category": "soft-wall",
+      "url": "https://httpbin.org/user-agent",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 690.5,
+      "p95_ms": 697.9,
+      "bytes": 0,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "httpbin-headers",
+      "category": "soft-wall",
+      "url": "https://httpbin.org/headers",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 548.7,
+      "p95_ms": 589.3,
+      "bytes": 0,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "httpbin-status403",
+      "category": "soft-wall",
+      "url": "https://httpbin.org/status/403",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 574.6,
+      "p95_ms": 736.0,
+      "bytes": 62142,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "nowsecure",
+      "category": "soft-wall",
+      "url": "https://nowsecure.nl/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 608.5,
+      "p95_ms": 694.0,
+      "bytes": 49447,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "scrapeme",
+      "category": "soft-wall",
+      "url": "https://scrapeme.live/shop/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 545.8,
+      "p95_ms": 619.8,
+      "bytes": 0,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling"
+      ],
+      "cost_proxy": 1
+    },
+    {
+      "name": "cf-challenge",
+      "category": "hard-wall",
+      "url": "https://nope.challengenetworks.com/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 2477.0,
+      "p95_ms": 2813.2,
+      "bytes": 3504,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling",
+        "browser_use"
+      ],
+      "cost_proxy": 2
+    },
+    {
+      "name": "g2",
+      "category": "hard-wall",
+      "url": "https://www.g2.com/",
+      "success_at_1": false,
+      "success_at_final": false,
+      "p50_ms": 2850.4,
+      "p95_ms": 3080.4,
+      "bytes": 0,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling",
+        "browser_use"
+      ],
+      "cost_proxy": 2
+    },
+    {
+      "name": "indeed",
+      "category": "hard-wall",
+      "url": "https://www.indeed.com/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 3140.8,
+      "p95_ms": 3207.5,
+      "bytes": 41117,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling",
+        "browser_use"
+      ],
+      "cost_proxy": 2
+    },
+    {
+      "name": "linkedin",
+      "category": "hard-wall",
+      "url": "https://www.linkedin.com/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 3052.1,
+      "p95_ms": 3177.9,
+      "bytes": 2074,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling",
+        "browser_use"
+      ],
+      "cost_proxy": 2
+    },
+    {
+      "name": "zoominfo",
+      "category": "hard-wall",
+      "url": "https://www.zoominfo.com/",
+      "success_at_1": false,
+      "success_at_final": true,
+      "p50_ms": 2748.7,
+      "p95_ms": 3183.4,
+      "bytes": 33385,
+      "tool_path": [
+        "curl_cffi",
+        "scrapling",
+        "browser_use"
+      ],
+      "cost_proxy": 2
+    }
+  ]
+}

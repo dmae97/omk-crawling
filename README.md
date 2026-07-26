@@ -5,14 +5,14 @@
 <h1 align="center">omk-crawling</h1>
 
 <p align="center">
-  <strong>Smart web crawling toolbox — 6 adapters, one router.</strong><br/>
+  <strong>Smart crawling toolbox — web auto-escalation + Android/iOS surfaces.</strong><br/>
   Fetch → Crawl → Browser → Extract → Convert → Mobile. Auto-escalates until it works.
 </p>
 
 <p align="center">
   <a href="https://github.com/dmae97/omk-crawling/blob/main/LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-00d7ff?style=for-the-badge" /></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776ab?style=for-the-badge&logo=python&logoColor=white" />
-  <img alt="Adapters" src="https://img.shields.io/badge/adapters-6-success?style=for-the-badge" />
+  <img alt="Adapters" src="https://img.shields.io/badge/adapters-10-success?style=for-the-badge" />
   <img alt="Tests" src="https://img.shields.io/badge/tests-passing-brightgreen?style=for-the-badge" />
 </p>
 
@@ -67,6 +67,28 @@
 </p>
 
 ---
+
+## Baemin (target)
+
+```bash
+omk-crawl reddit://r/programming
+omk-crawl 'appstore://search?q=요기요'   # iOS App Store meta
+omk-crawl baemin://36.8330,127.1303          # shops near geo
+omk-crawl 'baemin://shops?lat=36.83&lng=127.13&limit=40' --json
+```
+
+See [references/tools/baemin.md](references/tools/baemin.md).
+
+## Mobile (Android / iOS)
+
+```bash
+omk-crawl app.apk -o apk.md          # static APK surface
+omk-crawl app.ipa --json             # static IPA surface
+omk-crawl android://                 # adb devices
+omk-crawl 'android://SERIAL/packages'
+```
+
+See [references/tools/mobile.md](references/tools/mobile.md).
 
 ## Why omk-crawling?
 

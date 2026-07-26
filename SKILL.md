@@ -7,7 +7,7 @@ description: 'OMK 웹·데이터 수집/추출 툴박스 — 10개 도구를 목
   insane-search(단일 차단 URL). 크롤링·스크래핑·딥크롤·RAG 수집·마크다운 변환·안티봇
   우회·브라우저 자동화·모바일 앱 수집 필요 시 사용.'
 license: Apache-2.0
-version: 2.6.0
+version: 2.10.0
 metadata:
   category: research
   locale: ko-KR
@@ -44,7 +44,7 @@ metadata:
 ③ 브라우저 자동화          browser-use(LLM 에이전트) · crawl4ai/crawlee/scrapling(dynamic)
 ④ 추출                     autoscraper(학습형) · crawl4ai(CSS/LLM) · scrapling(셀렉터)
 ⑤ Markdown 변환            markitdown(파일: PDF·Office·이미지·오디오) · crawl4ai(웹)
-⑥ 모바일·네이티브          scrcpy(Android 화면 미러·제어)
+⑥ 모바일·네이티브          apk/ipa 정적 분석 · scrcpy/adb(Android 미러·dumpsys) · [tools/mobile.md](references/tools/mobile.md)
 ```
 
 ## 마스터 라우터 (목표 → 1순위 도구)
@@ -61,6 +61,9 @@ metadata:
 | 예시만 주면 **추출 규칙 학습** (브라우저 X, 초경량) | **autoscraper** | [tools/autoscraper.md](references/tools/autoscraper.md) |
 | PDF·Office·이미지·오디오·HTML **파일 → Markdown** | **markitdown** | [tools/markitdown.md](references/tools/markitdown.md) |
 | 웹/API 없이 **Android 앱에만** 있는 데이터 | **scrcpy** | [tools/scrcpy.md](references/tools/scrcpy.md) |
+| **Reddit** 서브레딧/검색 JSON | **reddit** / `RedditClient` | [tools/reddit.md](references/tools/reddit.md) |
+| **배달의민족** 근처 가게 리스트 (geo) | **baemin** / `BaeminClient` | [tools/baemin.md](references/tools/baemin.md) |
+| **iOS App Store** 메타 (IPA 없을 때) | **appstore** / `AppStoreClient` | [tools/appstore.md](references/tools/appstore.md) |
 
 라우팅 상세 결정 트리는 [references/routing.md](references/routing.md).
 

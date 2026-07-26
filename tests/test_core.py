@@ -110,10 +110,12 @@ class TestToolRegistry:
             assert isinstance(tool_available(name), bool)
 
     def test_available_plus_missing_equals_all(self):
-        from omk_crawl.detect import _TOOL_MODULES
+        from omk_crawl.detect import _HOST_TOOLS, _TOOL_MODULES
+
         avail = set(available_tools())
         miss = set(missing_tools())
-        assert avail | miss == set(_TOOL_MODULES.keys())
+        catalog = set(_TOOL_MODULES) | {n for n in _HOST_TOOLS if n != "android"}
+        assert avail | miss == catalog
         assert avail & miss == set()
 
 

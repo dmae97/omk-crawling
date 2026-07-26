@@ -34,3 +34,15 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+# Local crawl caches / graphs
+.crawl_cache/
+.understand-anything/
+.pytest_cache/
+.ruff_cache/
+# RE dumps (not for redistribution)
+re_artifacts/
+re_targets/
+ipa/
+# Sample data dumps
+examples/*_shops.json
+examples/*_top*.json

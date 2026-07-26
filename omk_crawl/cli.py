@@ -9,6 +9,18 @@ Usage:
     omk-crawl --diagnose https://example.com         # dry-run: what would we try?
     omk-crawl --tools                                # list installed tools
     omk-crawl report.pdf                             # file → markdown (markitdown)
+    omk-crawl app.apk                                # Android package surface
+    omk-crawl app.ipa                                # iOS package surface
+    omk-crawl android://                             # adb device list
+    omk-crawl android://SERIAL/packages              # 3rd-party packages
+    omk-crawl android://SERIAL/dump?pkg=com.app      # dumpsys package
+    omk-crawl baemin://36.83,127.13                  # Baemin shops near geo
+    omk-crawl 'baemin://shops?lat=36.83&lng=127.13&limit=40'
+    omk-crawl 'appstore://search?q=요기요'           # iOS App Store meta
+    omk-crawl appstore://378084485                   # lookup by trackId
+    omk-crawl ios://Freeform                         # iOS-only style search
+    omk-crawl reddit://r/programming                 # Reddit listing JSON
+    omk-crawl 'reddit://search?q=rust+async&limit=10'
 """
 
 from __future__ import annotations
@@ -53,13 +65,20 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="omk-crawl",
-        description="Smart web crawling toolbox — 6 adapters, auto-escalating router",
+        description=(
+            "Smart crawling toolbox — web auto-escalation + Android/iOS surfaces"
+        ),
         epilog=(
-            "This product uses Crawl4AI"
-            " (https://github.com/unclecode/crawl4ai) for web data extraction."
+            "Web: curl_cffi → crawl4ai → scrapling → browser-use. "
+            "Mobile: apk / ipa / android:// (adb). "
+            "Crawl4AI: https://github.com/unclecode/crawl4ai"
         ),
     )
-    parser.add_argument("url", nargs="?", help="URL or file path to crawl/convert")
+    parser.add_argument(
+        "url",
+        nargs="?",
+        help="URL, file path, .apk/.ipa, or android:// scheme",
+    )
     parser.add_argument("--tool", "-t", help="Force a specific tool (skip auto-escalation)")
     parser.add_argument("--output", "-o", help="Save output to file")
     parser.add_argument("--json", "-j", action="store_true", help="JSON output")
@@ -77,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dry-run: show what tools would be tried",
     )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
-    parser.add_argument("--version", action="version", version="omk-crawl 2.0.1")
+    parser.add_argument("--version", action="version", version="omk-crawl 2.10.0")
     return parser
 
 
@@ -108,12 +127,57 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(info, indent=2))
         return
 
-    # File path → markitdown
-    if Path(args.url).is_file():
+    target = args.url
+    path = Path(target)
+
+    # --- Mobile / native schemes & packages ---
+    forced_tool = args.tool
+    lower = target.lower()
+    if forced_tool is None:
+        if lower.startswith(("android://", "adb://", "device://")):
+            forced_tool = "scrcpy"
+        elif lower.startswith(("appstore://", "ios://")) or lower in {"appstore", "ios"}:
+            forced_tool = "appstore"
+        elif lower.startswith("reddit://") or lower == "reddit":
+            forced_tool = "reddit"
+        elif lower.startswith("baemin://") or lower == "baemin":
+            forced_tool = "baemin"
+        elif "reddit.com" in lower and lower.startswith("http"):
+            forced_tool = "reddit"
+        elif lower.startswith("apk://") or (
+            path.is_file() and path.suffix.lower() in {".apk", ".xapk", ".apks"}
+        ):
+            forced_tool = "apk"
+        elif lower.startswith("ipa://") or (path.is_file() and path.suffix.lower() == ".ipa"):
+            forced_tool = "ipa"
+
+    if forced_tool in {
+        "apk",
+        "ipa",
+        "scrcpy",
+        "android",
+        "baemin",
+        "reddit",
+        "appstore",
+        "ios",
+    }:
+        from omk_crawl.tools import get_tool
+
+        tool_name = {
+            "android": "scrcpy",
+            "ios": "appstore",
+        }.get(forced_tool, forced_tool)
+        tool = get_tool(tool_name)
+        r = tool.fetch(target)
+        _print_result(r, as_json=args.json, output=args.output)
+        sys.exit(0 if r.ok else 1)
+
+    # File path → markitdown (docs/media)
+    if path.is_file():
         from omk_crawl.tools.markitdown_tool import MarkitdownTool
 
         tool = MarkitdownTool()
-        r = tool.fetch(args.url)
+        r = tool.fetch(target)
         _print_result(r, as_json=args.json, output=args.output)
         sys.exit(0 if r.ok else 1)
 
@@ -127,7 +191,7 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     r = crawl(
-        args.url, tool=args.tool, verbose=args.verbose,
+        target, tool=forced_tool, verbose=args.verbose,
         respect_robots=not args.no_robots, min_delay=args.min_delay,
     )
 

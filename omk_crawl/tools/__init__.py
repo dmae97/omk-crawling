@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+from omk_crawl.tools.apk_tool import ApkTool
+from omk_crawl.tools.appstore_tool import AppStoreTool
 from omk_crawl.tools.autoscraper_tool import AutoscraperTool
+from omk_crawl.tools.baemin_tool import BaeminTool
 from omk_crawl.tools.base import BaseTool
 from omk_crawl.tools.browser_use_tool import BrowserUseTool
 from omk_crawl.tools.crawl4ai_tool import Crawl4aiTool
 from omk_crawl.tools.curl_cffi_tool import CurlCffiTool
 from omk_crawl.tools.insane_search_tool import InsaneSearchTool
+from omk_crawl.tools.ipa_tool import IpaTool
 from omk_crawl.tools.markitdown_tool import MarkitdownTool
+from omk_crawl.tools.reddit_tool import RedditTool
 from omk_crawl.tools.scrapling_tool import ScraplingTool
+from omk_crawl.tools.scrcpy_tool import ScrcpyTool
 
-# Escalation order: lightest → heaviest
+# Escalation order: lightest → heaviest (web only).
+# Mobile adapters are opt-in via --tool / scheme routing (not in web chain).
 # InsaneSearch runs first as a hyper-aggressive single-shot breaker.
 ESCALATION_CHAIN: list[type[BaseTool]] = [
     InsaneSearchTool,  # ⓪ 8-profile TLS rotation + stealth browser
@@ -29,7 +36,21 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
     "browser_use": BrowserUseTool,
     "autoscraper": AutoscraperTool,
     "markitdown": MarkitdownTool,
+    "baemin": BaeminTool,
+    "reddit": RedditTool,
+    # Mobile / native (layer 5)
+    "apk": ApkTool,
+    "ipa": IpaTool,
+    "appstore": AppStoreTool,
+    "ios": AppStoreTool,  # alias — public metadata when IPA unavailable
+    "scrcpy": ScrcpyTool,
+    "android": ScrcpyTool,  # alias
 }
+
+MOBILE_TOOLS: frozenset[str] = frozenset(
+    {"apk", "ipa", "appstore", "ios", "scrcpy", "android"}
+)
+TARGET_TOOLS: frozenset[str] = frozenset({"baemin", "reddit"})
 
 
 def get_tool(name: str, **kwargs) -> BaseTool:

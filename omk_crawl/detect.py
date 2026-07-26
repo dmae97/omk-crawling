@@ -50,23 +50,60 @@ _TOOL_MODULES: dict[str, str] = {
     "browser_use": "browser_use",
     "autoscraper": "autoscraper",
     "markitdown": "markitdown",
+    # insane_search is always available (built-in adapter; optional deps inside)
+    "insane_search": "omk_crawl.tools.insane_search_tool",
+    # baemin uses curl_cffi; mark available when curl_cffi is importable
+    "baemin": "curl_cffi",
+    "reddit": "curl_cffi",
+}
+
+# Host-binary / pure-python mobile tools — not importlib modules.
+_HOST_TOOLS: dict[str, str] = {
+    "apk": "always",       # zip scan always works
+    "ipa": "always",
+    "appstore": "always",  # iTunes public API (+ urllib fallback)
+    "ios": "always",
+    "scrcpy": "adb",        # needs adb on PATH
+    "android": "adb",
 }
 
 
+def _host_tool_available(name: str) -> bool:
+    kind = _HOST_TOOLS.get(name)
+    if kind == "always":
+        return True
+    if kind == "adb":
+        from omk_crawl.mobile.device import which_bin
+
+        return which_bin("adb") is not None
+    return False
+
+
 def tool_available(name: str) -> bool:
-    """Check if a tool's Python module is importable."""
+    """Check if a tool is usable (Python module or host binary)."""
+    if name in _HOST_TOOLS:
+        return _host_tool_available(name)
     mod = _TOOL_MODULES.get(name, name)
     return importlib.util.find_spec(mod) is not None
 
 
 def available_tools() -> list[str]:
-    """List installed tools."""
-    return [name for name in _TOOL_MODULES if tool_available(name)]
+    """List installed / usable tools."""
+    names = list(_TOOL_MODULES) + list(_HOST_TOOLS)
+    # de-dupe android alias noise in listings: show scrcpy once
+    seen: list[str] = []
+    for n in names:
+        if n == "android":
+            continue
+        if tool_available(n):
+            seen.append(n)
+    return seen
 
 
 def missing_tools() -> list[str]:
-    """List tools that need `pip install`."""
-    return [name for name in _TOOL_MODULES if not tool_available(name)]
+    """List tools that need install (pip or host)."""
+    names = [n for n in list(_TOOL_MODULES) + ["apk", "ipa", "scrcpy"] if n != "android"]
+    return [name for name in names if not tool_available(name)]
 
 
 # --- Response analysis ---

@@ -1,5 +1,62 @@
 # Changelog
 
+## [2.10.0] — 2026-07-26
+
+Ship train since 2.6.0: **mobile layer**, **Baemin live shops**, **iOS App Store meta**, **Reddit JSON bypass**.
+
+### Added — Reddit target client
+
+- **`RedditClient`**: old.reddit session warmup → `.json` listings
+- Bypasses www "Please wait for verification" challenge (no browser JS)
+- Methods: `subreddit`, `search`, `user`, `comments`
+- CLI: `reddit://r/programming`, `reddit://search?q=…`, plain reddit.com URLs
+- Tool registry: `reddit`
+- Docs: `references/tools/reddit.md`
+- Live verified: r/programming, r/korea JSON 200
+
+## [2.9.0] — 2026-07-26
+
+### Added — Mobile multi-APK crawl + iOS App Store surface
+
+- **APK analyzer v2**: full multi-dex string scan, binary AXML string-pool package/perm hints,
+  real DNS `hosts[]`, ranked API URLs (Baemin `com.sampleapp` → 400 URLs / 140+ hosts)
+- **IPA analyzer v2**: frameworks, extensions, ATS exception domains, query schemes, host list
+- **`AppStoreClient`** — public iTunes lookup/search (no IPA / DRM bypass)
+- **CLI**: `appstore://search?q=…`, `appstore://TRACK_ID`, `ios://Freeform`
+- Tool registry: `appstore` / `ios`
+- Artifacts: `re_artifacts/mobile_crawl_20260726/` (5 APKs + demo IPA + 39 KR App Store apps)
+
+## [2.8.0] — 2026-07-26
+
+### Added — Baemin live shop list (food-shop-list)
+
+- **`BaeminClient.list_shops` / `collect_shops`** — geo shop cards without app login
+  - Host: `food-shop-list.baemin.com`
+  - Group: `FOOD_CATEGORY` / category `FOOD_CATEGORY_ALL`
+  - Headers: `X-BAEMIN-LATITUDE`, `X-BAEMIN-LONGITUDE`, `X-BAEMIN-DEVICE-ID`
+- **`BaeminShop`**, `normalize_shop`, `rank_shops`, `shops_to_markdown`
+- **CLI / adapter**: `baemin://lat,lng`, `baemin://shops?lat=&lng=&limit=`
+- Tool registry: `baemin` (needs `curl_cffi`)
+- Docs: `references/tools/baemin.md`
+- Tests: `tests/test_baemin.py`
+
+## [2.7.0] — 2026-07-26
+
+### Added — mobile / native layer (Android + iOS)
+
+- **`omk_crawl.mobile`** package:
+  - `analyze_apk()` — zip/aapt/androguard static surface (URLs, perms, dex, SSL-pin hints)
+  - `analyze_ipa()` — Info.plist + URL schemes + ATS + string URLs
+  - `list_adb_devices()` / `adb_shell()` — host ADB bridge
+- **Adapters** registered in `ALL_TOOLS`:
+  - `apk` — `*.apk` / `apk://`
+  - `ipa` — `*.ipa` / `ipa://`
+  - `scrcpy` / `android` — `android://` device list, packages, dumpsys, screenshot
+- **CLI auto-route** by suffix/scheme (not in web escalation chain)
+- Extra: `pip install omk-crawl[mobile]` → optional `androguard`
+- Docs: `references/tools/mobile.md`
+- Tests: `tests/test_mobile.py`
+
 ## [2.6.0] — 2026-07-24
 
 ### Added — insane-search adapter (first-line breaker)

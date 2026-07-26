@@ -46,9 +46,8 @@ ipa/
 # Sample data dumps
 examples/*_shops.json
 examples/*_top*.json
+# Reddit poster run artifacts (session, screenshots, logs) — never publishable
 promo/reddit/.reddit_storage.json
-promo/reddit/after_*.png
-promo/reddit/fail_*.png
-promo/reddit/dry_*.png
-promo/reddit/chrome_home.png
-promo/reddit/post_run.log
+promo/reddit/*.png
+promo/reddit/*.log
+!promo/reddit/images/

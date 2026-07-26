@@ -30,6 +30,7 @@ import json
 import sys
 from pathlib import Path
 
+from omk_crawl import star
 from omk_crawl.detect import available_tools, missing_tools
 from omk_crawl.result import CrawlResult
 from omk_crawl.router import SmartRouter, crawl
@@ -96,13 +97,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Dry-run: show what tools would be tried",
     )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
-    parser.add_argument("--version", action="version", version="omk-crawl 2.10.0")
+    parser.add_argument(
+        "--star", action="store_true",
+        help=f"Star {star.REPO} on GitHub (uses gh CLI if authenticated, else opens browser)",
+    )
+    parser.add_argument("--version", action="version", version="omk-crawl 2.11.0")
     return parser
 
 
-def main(argv: list[str] | None = None) -> None:
+def _main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.star:
+        star.star_now()
+        star.save_state({**star.load_state(), "starred": True, "prompted": True})
+        return 0
 
     if args.tools:
         avail = available_tools()
@@ -115,17 +125,17 @@ def main(argv: list[str] | None = None) -> None:
             for t in miss:
                 print(f"  ❌ {t}")
             print("\nInstall all: pip install omk-crawl[all]")
-        return
+        return 0
 
     if not args.url:
         parser.print_help()
-        sys.exit(1)
+        return 1
 
     if args.diagnose:
         router = SmartRouter(verbose=True)
         info = router.diagnose(args.url)
         print(json.dumps(info, indent=2))
-        return
+        return 0
 
     target = args.url
     path = Path(target)
@@ -170,7 +180,7 @@ def main(argv: list[str] | None = None) -> None:
         tool = get_tool(tool_name)
         r = tool.fetch(target)
         _print_result(r, as_json=args.json, output=args.output)
-        sys.exit(0 if r.ok else 1)
+        return 0 if r.ok else 1
 
     # File path → markitdown (docs/media)
     if path.is_file():
@@ -179,7 +189,7 @@ def main(argv: list[str] | None = None) -> None:
         tool = MarkitdownTool()
         r = tool.fetch(target)
         _print_result(r, as_json=args.json, output=args.output)
-        sys.exit(0 if r.ok else 1)
+        return 0 if r.ok else 1
 
     # Web crawl with auto-escalation
     if args.verbose:
@@ -199,7 +209,15 @@ def main(argv: list[str] | None = None) -> None:
         print(f"\n--- {r.summary()} ---\n", file=sys.stderr)
 
     _print_result(r, as_json=args.json, output=args.output)
-    sys.exit(0 if r.ok else 1)
+    return 0 if r.ok else 1
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Console entry point: run, nudge for a star, then propagate the exit code."""
+    code = _main(argv)
+    star.after_run(success=code == 0)
+    if code != 0:
+        sys.exit(code)
 
 
 if __name__ == "__main__":

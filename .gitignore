@@ -46,3 +46,9 @@ ipa/
 # Sample data dumps
 examples/*_shops.json
 examples/*_top*.json
+promo/reddit/.reddit_storage.json
+promo/reddit/after_*.png
+promo/reddit/fail_*.png
+promo/reddit/dry_*.png
+promo/reddit/chrome_home.png
+promo/reddit/post_run.log

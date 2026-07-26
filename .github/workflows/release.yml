@@ -4,19 +4,47 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v2.10.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
-  id-token: write  # for PyPI trusted publishing
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG (version ${TAG#v})" >> "$GITHUB_STEP_SUMMARY"
+
   test:
+    needs: resolve
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -24,13 +52,24 @@ jobs:
       - run: pytest tests/ -v --tb=short -m 'not live'
 
   build:
-    needs: test
+    needs: [resolve, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Verify tag matches pyproject version
+        env:
+          EXPECTED: ${{ needs.resolve.outputs.version }}
+        run: |
+          ACTUAL=$(python -c "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::tag version '$EXPECTED' != pyproject version '$ACTUAL'"
+            exit 1
+          fi
       - run: pip install build
       - run: python -m build
       - uses: actions/upload-artifact@v4
@@ -39,43 +78,82 @@ jobs:
           path: dist/
 
   publish-pypi:
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-latest
-    environment: release
+    environment:
+      name: release
+      url: https://pypi.org/p/omk-crawl
+    permissions:
+      id-token: write # PyPI trusted publishing (OIDC)
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
       - name: Publish to PyPI
+        id: pypi
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Uses trusted publishing (OIDC) — no API token needed.
-        # Configure at: https://pypi.org/manage/project/omk-crawl/settings/publishing/
-        # Add publisher: GitHub Actions, owner=dmae97, repo=omk-crawling, workflow=release.yml
+        with:
+          # Empty password => OIDC trusted publishing (preferred).
+          # Set secret PYPI_API_TOKEN (repo or `release` environment) to fall back
+          # to API-token auth without touching this file.
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+          print-hash: true
+      - name: Explain publisher misconfiguration
+        if: failure() && steps.pypi.outcome == 'failure'
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## PyPI publish failed
+
+          If the log says `invalid-publisher`, PyPI has no trusted publisher for this workflow.
+
+          Fix A — trusted publishing (preferred, no secrets):
+          https://pypi.org/manage/project/omk-crawl/settings/publishing/ → *Add a new publisher* → GitHub
+
+          | Field | Value |
+          | --- | --- |
+          | Owner | `dmae97` |
+          | Repository | `omk-crawling` |
+          | Workflow name | `release.yml` |
+          | Environment name | `release` |
+
+          Fix B — API token fallback:
+          `gh secret set PYPI_API_TOKEN --env release --repo dmae97/omk-crawling`
+
+          Then re-run without a new tag:
+          `gh workflow run release.yml -f tag=<tag>`
+          EOF
 
   github-release:
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
-      - name: Extract changelog
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          awk "/^## \[$VERSION\]/{f=1;next} /^## \[/{f=0} f" CHANGELOG.md > /tmp/release_notes.md
-          if [ ! -s /tmp/release_notes.md ]; then
-            echo "Release $GITHUB_REF_NAME" > /tmp/release_notes.md
-          fi
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file /tmp/release_notes.md \
-            dist/*.whl dist/*.tar.gz
+          awk "/^## \[$VERSION\]/{f=1;next} /^## \[/{f=0} f" CHANGELOG.md > /tmp/release_notes.md
+          if [ ! -s /tmp/release_notes.md ]; then
+            echo "Release $TAG" > /tmp/release_notes.md
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file /tmp/release_notes.md --draft=false --latest
+            gh release upload "$TAG" dist/*.whl dist/*.tar.gz --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file /tmp/release_notes.md \
+              dist/*.whl dist/*.tar.gz
+          fi

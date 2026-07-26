@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.11.0] — 2026-07-27
+
+### Added — one-keypress GitHub star button
+
+- After the 3rd successful interactive run, `omk-crawl` asks once whether you want to
+  star the repo. `[enter]` stars it in place through an authenticated `gh` CLI,
+  `[b]` opens the browser, `[n]` never asks again.
+- `omk-crawl --star` — star on demand, no waiting.
+- Never touches stdout (`> out.md` / `--json | jq` stay byte-clean), never speaks on a
+  non-TTY, never in CI or under pytest, never writes state unless the session is interactive.
+- Opt out permanently: `OMK_CRAWL_NO_STAR=1` or the vendor-neutral `DO_NOT_TRACK=1`.
+- State: `$XDG_STATE_HOME/omk-crawl/star.json` (`%LOCALAPPDATA%` on Windows).
+- 27 tests in `tests/test_star.py`, plus a real-PTY verification of the prompt path.
+
 ## [2.10.0] — 2026-07-26
 
 Ship train since 2.6.0: **mobile layer**, **Baemin live shops**, **iOS App Store meta**, **Reddit JSON bypass**.

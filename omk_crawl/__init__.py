@@ -90,4 +90,4 @@ __all__ = [
     "AdbDevice", "AppStoreApp", "AppStoreClient",
     "analyze_apk", "analyze_ipa", "list_adb_devices",
 ]
-__version__ = "2.10.0"
+__version__ = "2.11.0"

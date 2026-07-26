@@ -300,6 +300,24 @@ install.sh              # One-liner skill installer
 
 ---
 
+## Star nudge
+
+Once — after your 3rd successful interactive run — omk-crawl asks whether it earned a star:
+
+```
+  ⭐ Enjoying omk-crawl? A star on dmae97/omk-crawling keeps it alive.
+     [enter] star it   [b] open in browser   [n] never ask again
+```
+
+`[enter]` stars the repo in place via your authenticated `gh` CLI (falls back to opening
+the browser). `omk-crawl --star` does it on demand.
+
+It is deliberately boring about it: stderr only (stdout stays pipe-clean), TTY only, never
+in CI or scripts, asked at most once. Turn it off for good with `OMK_CRAWL_NO_STAR=1`
+or `DO_NOT_TRACK=1`.
+
+---
+
 ## Development
 
 ```bash

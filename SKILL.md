@@ -7,7 +7,7 @@ description: 'OMK 웹·데이터 수집/추출 툴박스 — 10개 도구를 목
   insane-search(단일 차단 URL). 크롤링·스크래핑·딥크롤·RAG 수집·마크다운 변환·안티봇
   우회·브라우저 자동화·모바일 앱 수집 필요 시 사용.'
 license: Apache-2.0
-version: 2.10.0
+version: 2.11.0
 metadata:
   category: research
   locale: ko-KR

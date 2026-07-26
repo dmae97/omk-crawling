@@ -86,12 +86,26 @@ jobs:
     permissions:
       id-token: write # PyPI trusted publishing (OIDC)
     steps:
+      - name: Check whether the version is already on PyPI
+        id: exists
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/omk-crawl/$VERSION/json")
+          if [ "$CODE" = "200" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "omk-crawl $VERSION is already on PyPI - nothing to upload." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v4
+        if: steps.exists.outputs.published != 'true'
         with:
           name: dist
           path: dist/
       - name: Publish to PyPI
         id: pypi
+        if: steps.exists.outputs.published != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           # Empty password => OIDC trusted publishing (preferred).

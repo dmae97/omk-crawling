@@ -86,6 +86,15 @@ jobs:
     permissions:
       id-token: write # PyPI trusted publishing (OIDC)
     steps:
+      - name: Report auth mode
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -n "$PYPI_TOKEN" ]; then
+            echo "PyPI auth: API token (PYPI_API_TOKEN, ${#PYPI_TOKEN} chars)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PyPI auth: trusted publishing (OIDC)" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Check whether the version is already on PyPI
         id: exists
         env:

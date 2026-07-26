@@ -91,10 +91,11 @@ jobs:
           PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           if [ -n "$PYPI_TOKEN" ]; then
-            echo "PyPI auth: API token (PYPI_API_TOKEN, ${#PYPI_TOKEN} chars)" >> "$GITHUB_STEP_SUMMARY"
+            MODE="API token (PYPI_API_TOKEN, ${#PYPI_TOKEN} chars)"
           else
-            echo "PyPI auth: trusted publishing (OIDC)" >> "$GITHUB_STEP_SUMMARY"
+            MODE="trusted publishing (OIDC)"
           fi
+          echo "PyPI auth: $MODE" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check whether the version is already on PyPI
         id: exists
         env:

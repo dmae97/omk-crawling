@@ -76,6 +76,7 @@ def test_reddit_tool_status() -> None:
 
 @pytest.mark.live
 def test_live_programming() -> None:
+    pytest.importorskip("curl_cffi")
     from omk_crawl.reddit import RedditClient, RedditConfig
 
     client = RedditClient(RedditConfig(rate=1.0, cache_ttl=0, timeout=30))

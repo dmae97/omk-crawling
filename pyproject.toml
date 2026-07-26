@@ -88,6 +88,7 @@ select = ["E", "F", "I", "W", "UP"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-m 'not live'"
 markers = [
     "live: hits real network (deselect with -m 'not live')",
 ]

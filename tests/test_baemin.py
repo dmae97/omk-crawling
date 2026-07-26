@@ -79,6 +79,7 @@ def test_baemin_tool_status_offline() -> None:
 @pytest.mark.live
 def test_live_list_shops_cheonan() -> None:
     """Optional live probe — skip if offline / blocked."""
+    pytest.importorskip("curl_cffi")
     from omk_crawl.baemin import BaeminClient, BaeminConfig
 
     client = BaeminClient(BaeminConfig(rate=2.0, cache_ttl=0, timeout=20))

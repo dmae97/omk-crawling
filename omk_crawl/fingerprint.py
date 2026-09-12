@@ -269,7 +269,8 @@ def profile_for(url: str, salt: str = "") -> FingerprintProfile:
     """
     host = urlparse(url if "://" in url else f"//{url}").hostname or url
     digest = hashlib.sha256(f"{_PROFILE_MARKER}|{host.lower()}|{salt}".encode()).digest()
-    return PROFILES[int.from_bytes(digest[:4]) % len(PROFILES)]
+    # Explicit byteorder: Python 3.10 has no default (CI matrix floor).
+    return PROFILES[int.from_bytes(digest[:4], "big") % len(PROFILES)]
 
 
 def match_impersonate(impersonate: str) -> FingerprintProfile:

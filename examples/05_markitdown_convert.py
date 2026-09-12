@@ -3,7 +3,9 @@
 실제로는 PDF/docx/pptx/xlsx/이미지/오디오도 동일하게 .convert(path) 로 처리한다.
     pip install 'markitdown[all]'
 """
-import tempfile, os
+import os
+import tempfile
+
 from markitdown import MarkItDown
 
 SAMPLE_HTML = """<html><body>

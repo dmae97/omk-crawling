@@ -5,7 +5,7 @@ quotes.toscrape.com 의 페이지네이션을 따라가며 각 페이지의 마�
 """
 import asyncio
 
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
+from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 
 START = "https://quotes.toscrape.com/"

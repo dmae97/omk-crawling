@@ -11,6 +11,7 @@ from omk_crawl.tools import ALL_TOOLS, ESCALATION_CHAIN, get_tool
 
 # --- CrawlResult ---
 
+
 class TestCrawlResult:
     def test_ok(self):
         r = CrawlResult(url="https://x.com", status=CrawlStatus.OK, markdown="# Hi")
@@ -29,14 +30,22 @@ class TestCrawlResult:
 
     def test_content_priority(self):
         r = CrawlResult(
-            url="x", status=CrawlStatus.OK, html="<p>hi</p>", markdown="# hi", fit_markdown="hi",
+            url="x",
+            status=CrawlStatus.OK,
+            html="<p>hi</p>",
+            markdown="# hi",
+            fit_markdown="hi",
         )
         assert r.content == "hi"  # fit_markdown > markdown > html
 
     def test_summary(self):
         r = CrawlResult(
-            url="https://x.com", status=CrawlStatus.OK, tool="curl_cffi",
-            status_code=200, elapsed_ms=42.5, markdown="hello",
+            url="https://x.com",
+            status=CrawlStatus.OK,
+            tool="curl_cffi",
+            status_code=200,
+            elapsed_ms=42.5,
+            markdown="hello",
         )
         s = r.summary()
         assert "ok" in s
@@ -45,6 +54,7 @@ class TestCrawlResult:
 
 
 # --- Detection ---
+
 
 class TestDetection:
     def test_clean_page(self):
@@ -84,6 +94,7 @@ class TestDetection:
 
 # --- Tool registry ---
 
+
 class TestToolRegistry:
     def test_all_tools_registered(self):
         assert len(ALL_TOOLS) >= 6
@@ -94,7 +105,53 @@ class TestToolRegistry:
 
     def test_escalation_order(self):
         names = [cls().name for cls in ESCALATION_CHAIN]
-        assert names == ["insane_search", "curl_cffi", "crawl4ai", "scrapling", "browser_use"]
+        assert names == [
+            "insane_search",
+            "curl_cffi",
+            "crawl4ai",
+            "scrapling",
+            "camoufox",
+            "patchright",
+            "nodriver",
+            "browser_use",
+        ]
+
+    def test_insane_search_success_returns_result(self, monkeypatch):
+        import sys
+        from types import ModuleType, SimpleNamespace
+
+        class Response:
+            status_code = 200
+            headers = {}
+            text = (
+                "<article>This guide explains why CAPTCHA checks blocked requests and how "
+                "public clients should handle those responses safely.</article>"
+            )
+
+        request_kwargs = {}
+
+        def fake_get(*args, **kwargs):
+            request_kwargs.update(kwargs)
+            return Response()
+
+        module = ModuleType("curl_cffi")
+        module.__dict__["requests"] = SimpleNamespace(get=fake_get)
+        monkeypatch.setitem(sys.modules, "curl_cffi", module)
+        result = get_tool("insane_search").fetch(
+            "https://example.com",
+            stealth=False,
+            timeout="invalid",
+        )
+
+        assert result.ok
+        assert result.html == Response.text
+        assert 0 < request_kwargs["timeout"] <= 18
+
+    def test_insane_search_detects_challenge_context(self):
+        from omk_crawl.tools.insane_search_tool import InsaneSearchTool
+
+        assert InsaneSearchTool._is_blocked(200, "<title>Access Denied</title>")
+        assert InsaneSearchTool._is_blocked(200, "Complete the CAPTCHA to continue")
 
     def test_get_tool(self):
         t = get_tool("curl_cffi")
@@ -121,6 +178,7 @@ class TestToolRegistry:
 
 # --- SmartRouter ---
 
+
 class TestSmartRouter:
     def test_diagnose(self):
         router = SmartRouter()
@@ -140,6 +198,7 @@ class TestSmartRouter:
     def test_missing_tool_returns_graceful(self):
         """Fetching with a missing tool returns TOOL_MISSING, not exception."""
         from omk_crawl.tools.curl_cffi_tool import CurlCffiTool
+
         t = CurlCffiTool()
         if not t.available():
             r = t.fetch("https://example.com")
@@ -149,15 +208,18 @@ class TestSmartRouter:
 
 # --- Pipeline ---
 
+
 class TestPipeline:
     def test_pipeline_construction(self):
         from omk_crawl.pipeline import Pipeline
+
         p = Pipeline()
         p.fetch().to_markdown()
         assert len(p.steps) == 2
 
     def test_pipeline_extract_css_step(self):
         from omk_crawl.pipeline import Pipeline
+
         p = Pipeline()
         p.fetch().extract_css("div.item", {"title": "h2"})
         assert len(p.steps) == 2

@@ -5,7 +5,7 @@ raw_markdown(전체)와 fit_markdown(노이즈 제거 본문)을 함께 뽑는�
 """
 import asyncio
 
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
+from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 

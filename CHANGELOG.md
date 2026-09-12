@@ -1,5 +1,119 @@
 # Changelog
 
+## [2.13.0] — 2026-09-12
+
+### Added
+
+- Session-based X search (`XSearchTool`, `x_search`) and guest-token X trends
+  (`get_trends`, `trend_to_tweets`, `trending_with_content`). These reuse the caller's
+  own warmed session cookies; no API keys or OAuth secrets are stored.
+- Shared target routing for CLI, sync/async public APIs, and dry-run plans.
+  Native URIs and local files bypass the web chain; service hosts use hostname matching.
+- Per-crawl execution traces, capability filtering, adapter exception isolation,
+  `max_fetches`, and cooperative `total_timeout` (default 120 seconds). The default
+  adapter cap is now 8. Browser disabling includes optional internal rendering;
+  LLM adapters require explicit opt-in.
+- Offline HAR inspection through `analyze_har()`, `--tool har`, and `.har` CLI routing.
+  Metadata-only defaults omit headers, cookies, request bodies, and URL credentials,
+  query strings, and fragments. JSON response bodies require explicit opt-in.
+  File, entry, and decoded-body limits bound processing; malformed entries have indexed diagnostics.
+- Router HTTP recovery for 408/429/502/503/504, bounded backoff, and `Retry-After`
+  seconds/date support. Explicit terminal reasons and per-crawl attempt counts.
+
+### Fixed
+
+- InsaneSearch shares its timeout across profiles and browser work, preserves HTTP
+  status/headers, and stops on authentication or server backpressure. SDK absence is
+  reported instead of escaping as an import error; browser close runs in `finally`.
+- Invalid HTTP SDK impersonation profiles are rejected before creating a session.
+  CI explicitly installs the existing `curl` extra required by transport tests.
+- Async rate-limit waits no longer block the event loop or hold a global lock while
+  sleeping. Robots checks run off-loop, and async convenience arguments configure the router.
+- Auth/rate-limit/unsafe-method stops return the terminal response rather than a
+  larger earlier failure. Pending retries remain cancellable; unsafe methods are not retried.
+- CLI version output uses the package's `__version__` instead of a stale literal.
+
+## [2.12.1] — 2026-08-25
+
+### Changed — dependency bump
+
+- **browser-use 0.13.6 → 0.13.8** (SKILL.md pin, NOTICE.md, check-versions.sh,
+  `references/tools/browser-use.md`). pyproject range `>=0.13,<1` unchanged.
+  Upstream: 0.13.7 ships CLI 3.x fixes (file:// URL handling, React controlled-input
+  clearing, extraction no longer auto-inherits output_model_schema per page);
+  0.13.8 recovers Anthropic tool arguments serialized as text, updates Cerebras model
+  IDs, guards `last_action()` on empty action lists, `_inject_budget_warning` against
+  ZeroDivisionError, returns Path from `validate_user_data_dir`, writes agent files as
+  UTF-8. Adapter (`omk_crawl/tools/browser_use_tool.py`) is API-compatible — no code change.
+
+## [2.12.0] — 2026-08-20
+
+**Breakthrough layer** — grounded in the 2024–2026 arXiv finding that evasive bots are
+caught by *cross-layer and over-time fingerprint inconsistency*, not by any single
+attribute (arXiv:2406.07647, 2606.30119, 2602.09606, 2606.14525, 2502.01608).
+
+### Added — breakthrough layer
+
+- **`fingerprint.py`** — cross-layer fingerprint coherence engine. One `FingerprintProfile`
+  pins TLS impersonation + User-Agent + Client Hints + Accept-Language + locale/timezone +
+  viewport so every layer tells the same story. `coherence_issues()` audits 5 mismatch
+  rules; `profile_for(url)` keeps the identity deterministic per site (over-time
+  consistency); `match_impersonate()` maps an existing curl_cffi target to a coherent
+  profile. 5 built-in profiles (chrome-win/mac/linux, firefox-win, safari-mac).
+- **`behavior.py`** — `BehaviorClock`: seed-deterministic human timings (lognormal
+  think/inter-request, content-scaled dwell) and interaction plans (Bezier mouse paths,
+  chunked scroll plans). Same seed → same sequence (replayable, offline-testable).
+- **`warmup.py`** — session warm-up & clearance reuse. `SessionWarmup.acquire()` drives a
+  real browser (nodriver → patchright → camoufox) through the site entry like a human and
+  harvests clearance cookies (`cf_clearance`, `datadome`, `_abck`, `aws-waf-token`, …);
+  `WarmSession.curl_kwargs()` replays the session with the *same* TLS profile + headers +
+  cookies; `warm_crawl(url)` = cache → acquire → replay → invalidate → router fallback.
+  Persisted at `~/.cache/omk-crawl/warm-sessions.json` (atomic, 0600, TTL).
+
+### Added — anti-detect browser adapters (escalation chain ④–⑥)
+
+- **`camoufox`** — anti-detect Firefox with C++-level fingerprint injection, `humanize`,
+  `geoip` proxy pinning. Sync + async adapters.
+- **`nodriver`** — CDP-native Chrome (undetected-chromedriver successor). No WebDriver /
+  `navigator.webdriver` surface — the strongest option against DataDome/Kasada/PerimeterX.
+  Sync fetch refuses a running event loop with an explicit error (fail-closed).
+- **`patchright`** — patched, undetected Playwright drop-in. Browser context is built from
+  the site's coherent fingerprint profile.
+- Escalation chain is now 8-stage: `insane_search → curl_cffi → crawl4ai → scrapling →
+  camoufox → patchright → nodriver → browser_use`.
+
+### Added — detection & routing
+
+- New `BlockType`s: **KASADA** (kpsdk/x-kpsdk), **PERIMETERX/HUMAN** (px-captcha/_pxhd),
+  **AWS_WAF** (aws-waf-token). Per-vendor route tables: DataDome/Kasada/PerimeterX
+  front-load `nodriver`; Cloudflare/Akamai/Imperva front-load `insane_search`/`camoufox`.
+  `AUTH_REQUIRED` remains top priority with an empty route (never bypass, P3).
+
+### Security
+
+- Removed a hardcoded Firebase API key from `proxy_engine_v2.py` — proxy validation now
+  reads `OMK_PROXY_VALIDATE_KEY` from the environment and fails closed at `validate_batch`
+  entry when unset. **If you used that key, rotate it** (it lived in plaintext on disk).
+- Quarantined scanner-triggering gitignored artifacts (third-party APK SDK tokens, local
+  session state, public page captures) out of the repo tree to
+  `~/.cache/omk-crawling-quarantine/` (restore steps in `QUARANTINE.md`).
+- `.gitleaksignore` now documents justified suppressions.
+- `aiohttp`/`aiohttp_socks` are lazy imports in `proxy_engine_v2`/`freshness_engine` —
+  the core stays zero-dep (P4).
+
+### Fixed
+
+- Pre-existing ruff/type errors in `backtrack_guard`, `stealth_decision`,
+  `proxy_engine_v2`, `freshness_engine`, `curl_cffi_tool` (ProxySpec/headers typing).
+
+### Internal
+
+- `tests/test_breakthrough.py` — 47 new offline-deterministic tests (fingerprint coherence,
+  behavior determinism, warm sessions, new WAF detection, routing tables, adapter contract).
+- spec-kit docs: `.specify/memory/constitution.md` + `specs/001-smart-escalation-core`
+  (as-built) + `specs/002-unblockable-breakthrough` (this release).
+- Suite: 251 passed, 2 deselected (live) · `ruff` 0 errors · `gitleaks dir .` 0 findings.
+
 ## [2.11.0] — 2026-07-27
 
 ### Added — one-keypress GitHub star button
@@ -105,6 +219,7 @@ to routing quality, adapter contract, and a real benchmark (the three levers
 the review identified for moving 78 → 90).
 
 ### Added — detection-aware routing (Phase 2)
+
 - **`routing.py`** — `ROUTE_TABLE` maps each `BlockType` to a preferred tool
   order (TLS→curl_cffi, JS→crawl4ai, CF/WAF→scrapling). `preferred_order()`
   reorders the remaining chain after a detected block; `reorder_tools()` is
@@ -118,6 +233,7 @@ the review identified for moving 78 → 90).
 - 17 routing tests (table, permutation, stability, router reroute integration).
 
 ### Added — unified adapter contract (Phase 1)
+
 - `BaseTool.capabilities` (frozenset) + `COMMON_KWARGS` (timeout/proxy/headers/
   cookies/session). `supports()`, `unsupported_features()`, `contract_metadata()`
   report requested-but-unsupported features explicitly instead of silent no-ops.
@@ -126,17 +242,20 @@ the review identified for moving 78 → 90).
 - 15 contract tests.
 
 ### Added — browser-use cost guards (Phase 5)
+
 - `max_steps`, `max_cost_usd`, `deadline_s` caps; excluded from the chain when
   no LLM key is configured; failure taxonomy (nav/login/timeout/model/unknown);
   `dry_run` mode reports guardrails without spending.
 
 ### Added — benchmark harness (Phase 3)
+
 - `benchmarks/sites.yaml` — 20 sites across static / JS / soft-wall / hard-wall.
 - `scripts/bench.py` — mock (CI) + live modes; success@1/final, p50/p95 latency,
   bytes, tool path, cost proxy → `benchmarks/latest.json` + Markdown table.
 - README benchmark table from a polite live run (7/7 success@1).
 
 ### Changed — consistency (Phase 0)
+
 - Tool-count framing unified: 6 runtime adapters (4 core escalation + 2 aux),
   skill catalog references 10. Version aligned across `pyproject`/`__init__`/tag.
 - GitHub topics added (web-scraping, crawler, anti-bot, markdown, python, …).
@@ -149,6 +268,7 @@ imported lazily inside functions, so `import omk_crawl` still works with no
 extras installed. Install `omk-crawl[targets]` for the Naver/Baemin clients.
 
 ### Added
+
 - **`resilience.py`** — `TokenBucket` (sync + `acquire_async`), `RetryPolicy`/
   `retry` with exponential backoff, `ResponseCache`, `HeaderStore`,
   `ImpersonateRotator` (8 TLS fingerprints, auto-excludes failed profiles),
@@ -181,11 +301,13 @@ extras installed. Install `omk-crawl[targets]` for the Naver/Baemin clients.
 - **`scripts/verify_endpoints.py`** — 17-check endpoint + component suite.
 
 ### Changed
+
 - `__init__.py` exports expanded to 38 symbols; `__version__` → 2.4.0.
 - `pyproject.toml`: new `targets` optional-extra; `all` updated; description
   refreshed.
 
 ### Legal scope
+
 This release does **not** bypass, forge, or defeat authentication. Accessing
 private/login-gated content is supported only via the user's own legitimate
 session (`CookieManager`), i.e. automating access the account is already
@@ -194,6 +316,7 @@ authorized for. Unauthorized access is out of scope (정보통신망법 §48).
 ## [2.0.0] — 2026-07-24
 
 ### Added
+
 - **scrapling** as 10th tool with dedicated `references/tools/scrapling.md`
 - **insane-search** as 11th referenced tool (OMK internal sibling)
 - Full shoutout section in NOTICE.md for all 11 upstream projects
@@ -203,6 +326,7 @@ authorized for. Unauthorized access is out of scope (정보통신망법 §48).
 - `.gitignore` for Python/Node artifacts
 
 ### Changed
+
 - SKILL.md frontmatter description compressed (~800 → ~400 chars) for faster skill routing
 - SKILL.md metadata.tools now includes scrapling + insane-search (10 entries)
 - NOTICE.md restructured: license summary table, per-project shoutout with descriptions
@@ -210,7 +334,9 @@ authorized for. Unauthorized access is out of scope (정보통신망법 §48).
 - All references synced from v1 skill at `~/.omk/agent/skills/omk-crawling/`
 
 ### License verification
+
 All 11 upstream licenses verified via GitHub API on 2026-07-24:
+
 - Apache-2.0: crawl4ai, crawlee, scrcpy
 - MIT: browser-use, curl-impersonate, curl_cffi, autoscraper, markitdown
 - BSD-3-Clause: scrapy, scrapling
@@ -219,6 +345,7 @@ All 11 upstream licenses verified via GitHub API on 2026-07-24:
 ## [1.0.0] — 2026-07-23
 
 ### Added
+
 - Initial skill: 8 tools (crawl4ai, scrapy, crawlee, browser-use, curl-impersonate, autoscraper, markitdown, scrcpy)
 - 6-layer routing architecture
 - 7 runnable examples

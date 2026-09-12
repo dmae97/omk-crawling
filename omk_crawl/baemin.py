@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -56,8 +57,7 @@ FOOD_LIST_BASE = "https://food-shop-list.baemin.com"
 FOOD_LIST_ENDPOINTS = [
     Endpoint(f"{FOOD_LIST_BASE}/api/display-group/{{group}}", verified=True),
     Endpoint(
-        f"{FOOD_LIST_BASE}/api/display-group/{{group}}"
-        "/display-category/{category}/shops",
+        f"{FOOD_LIST_BASE}/api/display-group/{{group}}/display-category/{{category}}/shops",
         verified=True,
     ),
 ]
@@ -133,14 +133,18 @@ class BaeminShop:
 
 def normalize_shop(item: dict[str, Any]) -> BaeminShop | None:
     """Normalize a list item (`{shop: {...}}` or bare shop dict)."""
-    shop = item.get("shop") if isinstance(item.get("shop"), dict) else item
+    nested = item.get("shop")
+    shop = nested if isinstance(nested, dict) else item
     if not isinstance(shop, dict):
         return None
     name = str(shop.get("name") or "").strip()
     number = shop.get("number") or shop.get("id") or shop.get("shopNumber")
     if not name or number is None:
         return None
-    statics = shop.get("statics") if isinstance(shop.get("statics"), dict) else {}
+    # Evaluate each lookup once, then narrow — calling .get() twice defeats
+    # type narrowing and re-reads a value that may not be stable.
+    statics_raw = shop.get("statics")
+    statics: dict[str, Any] = statics_raw if isinstance(statics_raw, dict) else {}
     try:
         score = float(statics.get("starScore") or shop.get("score") or 0)
     except (TypeError, ValueError):
@@ -158,12 +162,14 @@ def normalize_shop(item: dict[str, Any]) -> BaeminShop | None:
     thumb = ""
     if isinstance(thumbs, list) and thumbs:
         thumb = str(thumbs[0])
-    menus_raw = shop.get("menus") if isinstance(shop.get("menus"), list) else []
+    menus_any = shop.get("menus")
+    menus_raw: list[Any] = menus_any if isinstance(menus_any, list) else []
     menus: list[dict[str, Any]] = []
     for m in menus_raw[:10]:
         if not isinstance(m, dict):
             continue
-        price = m.get("price") if isinstance(m.get("price"), dict) else {}
+        price_raw = m.get("price")
+        price: dict[str, Any] = price_raw if isinstance(price_raw, dict) else {}
         menus.append(
             {
                 "id": m.get("id"),
@@ -295,10 +301,7 @@ class BaeminClient:
         lat_v = self.cfg.lat if lat is None else lat
         lng_v = self.cfg.lng if lng is None else lng
         # Geo is sent as headers — must be part of the cache key
-        cache_key = (
-            f"{url}?{json.dumps(params or {}, sort_keys=True)}"
-            f"&geo={lat_v:.6f},{lng_v:.6f}"
-        )
+        cache_key = f"{url}?{json.dumps(params or {}, sort_keys=True)}&geo={lat_v:.6f},{lng_v:.6f}"
         cached = self.cache.get(cache_key)
         if cached:
             return BaeminResult(
@@ -318,7 +321,9 @@ class BaeminClient:
                 url,
                 params=params,
                 headers=headers,
-                impersonate=imp,
+                # rotator yields a runtime-validated profile name; curl_cffi
+                # types this parameter as a closed Literal union.
+                impersonate=imp,  # type: ignore[arg-type]
                 timeout=self.cfg.timeout,
             )
             if resp.status_code == 403:
@@ -375,7 +380,9 @@ class BaeminClient:
         category: str | None = None,
         offset: int = 0,
         limit: int = DEFAULT_PAGE_SIZE,
-        exclude_shop_numbers: list[str | int] | None = None,
+        # Sequence (covariant) not list (invariant): callers legitimately pass
+        # a list[str], and this is only ever iterated.
+        exclude_shop_numbers: Sequence[str | int] | None = None,
     ) -> BaeminResult:
         """List shops near lat/lng via food-shop-list (no login).
 
@@ -389,10 +396,7 @@ class BaeminClient:
             "shops.limit": str(limit),
             "shops.offset": str(offset),
         }
-        url = (
-            f"{FOOD_LIST_BASE}/api/display-group/{group}"
-            f"/display-category/{cat}/shops"
-        )
+        url = f"{FOOD_LIST_BASE}/api/display-group/{group}/display-category/{cat}/shops"
         return self._get(url, params=params, lat=lat, lng=lng)
 
     def collect_shops(
@@ -469,8 +473,7 @@ class BaeminClient:
             ok=False,
             endpoint="search-gateway",
             error=(
-                "search-gateway blocked. Use list_shops(lat,lng) or mitm capture. "
-                f"query={query!r}"
+                f"search-gateway blocked. Use list_shops(lat,lng) or mitm capture. query={query!r}"
             ),
         )
 

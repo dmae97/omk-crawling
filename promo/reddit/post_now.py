@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -140,10 +140,10 @@ def wait_for_login(page, timeout_s: float = 300.0) -> None:
     """User completes login in the headed window."""
     page.goto("https://www.reddit.com/login/", wait_until="domcontentloaded")
     print("\n>>> Log into Reddit in the opened browser window.")
-    print(">>> Waiting up to {:.0f}s for a logged-in session...\n".format(timeout_s))
+    print(f">>> Waiting up to {timeout_s:.0f}s for a logged-in session...\n")
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        try:
+        with suppress(Exception):
             # cookie or UI signals
             cookies = page.context.cookies()
             names = {c.get("name") for c in cookies if "reddit" in (c.get("domain") or "")}
@@ -166,54 +166,48 @@ def wait_for_login(page, timeout_s: float = 300.0) -> None:
                         'a[href*="/user/"]',
                         "faceplate-tracker[source='user_drawer']",
                     ):
-                        try:
+                        with suppress(Exception):
                             if page.locator(sel).count() > 0:
                                 print(f"Login detected via UI ({sel}).")
                                 return
-                        except Exception:
-                            pass
-        except Exception:
-            pass
         time.sleep(2)
     raise TimeoutError("Timed out waiting for Reddit login")
 
 
 def submit_post(page, post: PromoPost, *, dry: bool = False) -> str:
     print(f"\n=== r/{post.subreddit}: {post.title[:80]}")
-    submit_url = f"https://www.reddit.com/r/{post.subreddit}/submit/?type=IMAGE" if post.image else f"https://www.reddit.com/r/{post.subreddit}/submit/?type=TEXT"
+    submit_url = (
+        f"https://www.reddit.com/r/{post.subreddit}/submit/?type=IMAGE"
+        if post.image
+        else f"https://www.reddit.com/r/{post.subreddit}/submit/?type=TEXT"
+    )
     # Prefer image post when image exists; fallback text
     page.goto(submit_url, wait_until="domcontentloaded", timeout=60000)
     time.sleep(3)
 
     # dismiss cookie / NSFW / onboarding modals if any
     for label in ("Accept all", "Accept", "I agree", "Continue", "Got it"):
-        try:
+        with suppress(Exception):
             btn = page.get_by_role("button", name=label)
             if btn.count() and btn.first.is_visible():
                 btn.first.click(timeout=1500)
                 time.sleep(0.5)
-        except Exception:
-            pass
 
     # switch to image tab if needed
     if post.image:
         for name in ("Images & Video", "Image", "Images"):
-            try:
+            with suppress(Exception):
                 tab = page.get_by_role("button", name=name)
                 if tab.count():
                     tab.first.click(timeout=2000)
                     time.sleep(1)
                     break
-            except Exception:
-                pass
-            try:
+            with suppress(Exception):
                 tab = page.get_by_text(name, exact=False)
                 if tab.count():
                     tab.first.click(timeout=2000)
                     time.sleep(1)
                     break
-            except Exception:
-                pass
 
     # Title
     title_filled = False
@@ -236,11 +230,9 @@ def submit_post(page, post: PromoPost, *, dry: bool = False) -> str:
             continue
     if not title_filled:
         # shreddit composer
-        try:
+        with suppress(Exception):
             page.get_by_placeholder(re.compile("title", re.I)).first.fill(post.title)
             title_filled = True
-        except Exception:
-            pass
     if not title_filled:
         raise RuntimeError("Could not find title field — Reddit UI changed")
 
@@ -275,12 +267,10 @@ def submit_post(page, post: PromoPost, *, dry: bool = False) -> str:
         except Exception:
             continue
     if not body_ok:
-        try:
+        with suppress(Exception):
             page.keyboard.press("Tab")
             page.keyboard.type(body[:5000], delay=1)
             body_ok = True
-        except Exception:
-            pass
 
     # Upload image
     if post.image and post.image.is_file():
@@ -386,7 +376,7 @@ def main() -> None:
         # check session
         page.goto("https://www.reddit.com/", wait_until="domcontentloaded")
         time.sleep(2)
-        cookies = {c["name"] for c in context.cookies() if "reddit" in c.get("domain", "")}
+        cookies = {c.get("name") for c in context.cookies() if "reddit" in c.get("domain", "")}
         if "reddit_session" not in cookies and "token_v2" not in cookies:
             wait_for_login(page, timeout_s=args.login_timeout)
         else:

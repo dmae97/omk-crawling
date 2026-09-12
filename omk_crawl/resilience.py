@@ -15,16 +15,19 @@ from __future__ import annotations
 import json
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from types import MappingProxyType
+from typing import Any, ClassVar, TypeVar
 
 T = TypeVar("T")
 
 # ─────────────────────────────────────────────
 # 1. Token-bucket rate limiter
 # ─────────────────────────────────────────────
+
 
 class TokenBucket:
     """Token-bucket rate limiter. Thread-safe enough for single-process crawlers."""
@@ -83,6 +86,7 @@ class TokenBucket:
 # 2. Retry with exponential backoff + jitter
 # ─────────────────────────────────────────────
 
+
 @dataclass
 class RetryPolicy:
     max_retries: int = 3
@@ -93,7 +97,7 @@ class RetryPolicy:
     retryable_statuses: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 
     def delay_for(self, attempt: int) -> float:
-        d = min(self.base_delay * (self.backoff_factor ** attempt), self.max_delay)
+        d = min(self.base_delay * (self.backoff_factor**attempt), self.max_delay)
         j = d * self.jitter * random.random()
         return d + j
 
@@ -141,6 +145,7 @@ def _extract_status(exc: Exception) -> int | None:
 # 3. Response cache (file-backed)
 # ─────────────────────────────────────────────
 
+
 class ResponseCache:
     """Simple file-backed response cache to avoid re-hitting rate-limited APIs."""
 
@@ -151,6 +156,7 @@ class ResponseCache:
 
     def _key(self, url: str) -> Path:
         import hashlib
+
         h = hashlib.sha256(url.encode()).hexdigest()[:16]
         return self.dir / f"{h}.json"
 
@@ -177,20 +183,26 @@ class ResponseCache:
 # 4. Header store (mitmproxy capture loader)
 # ─────────────────────────────────────────────
 
+
 class HeaderStore:
     """Load and manage headers captured by mitmproxy or manual config.
 
     Solves: 400 '필수 헤더 값이 누락되었습니다'
     """
 
-    DEFAULT_HEADERS: dict[str, str] = {
-        "User-Agent": (
-            "Mozilla/5.0 (Linux; Android 14; Pixel 8) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Mobile Safari/537.36"
-        ),
-        "Accept": "application/json",
-    }
+    #: Read-only template. Instances copy it in __init__, so a caller cannot
+    #: mutate the shared default through any instance (MappingProxyType makes
+    #: an accidental in-place write raise instead of silently leaking).
+    DEFAULT_HEADERS: ClassVar[Mapping[str, str]] = MappingProxyType(
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (Linux; Android 14; Pixel 8) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Mobile Safari/537.36"
+            ),
+            "Accept": "application/json",
+        }
+    )
 
     def __init__(self, capture_file: str | Path | None = None) -> None:
         self._headers: dict[str, str] = dict(self.DEFAULT_HEADERS)
@@ -203,7 +215,8 @@ class HeaderStore:
         p = Path(path)
         if not p.exists():
             return False
-        try:
+        # Malformed/unreadable capture → report "no headers loaded".
+        with suppress(json.JSONDecodeError, OSError):
             data = json.loads(p.read_text(encoding="utf-8"))
             headers = data.get("headers", {})
             if headers:
@@ -216,8 +229,6 @@ class HeaderStore:
                 self._headers.update(review["headers"])
                 self._loaded = True
                 return True
-        except (json.JSONDecodeError, OSError):
-            pass
         return False
 
     @property
@@ -236,9 +247,16 @@ class HeaderStore:
 # ─────────────────────────────────────────────
 
 IMPERSONATE_POOL: list[str] = [
-    "chrome124", "chrome120", "chrome116", "chrome110",
-    "safari17_0", "safari15_5", "edge101", "firefox133",
+    "chrome124",
+    "chrome120",
+    "chrome116",
+    "chrome110",
+    "safari17_0",
+    "safari15_5",
+    "edge101",
+    "firefox133",
 ]
+
 
 class ImpersonateRotator:
     """Rotate TLS fingerprints to avoid WAF pattern matching."""
@@ -265,10 +283,12 @@ class ImpersonateRotator:
 # 6. Playwright availability check
 # ─────────────────────────────────────────────
 
+
 def ensure_playwright() -> bool:
     """Check if Playwright browsers are installed. Returns True if ready."""
     try:
         from playwright.sync_api import sync_playwright
+
         with sync_playwright() as p:
             # Try to find chromium executable
             exe = p.chromium.executable_path
@@ -280,10 +300,13 @@ def ensure_playwright() -> bool:
 def install_playwright_chromium() -> bool:
     """Attempt to install Playwright Chromium. Returns True on success."""
     import subprocess
+
     try:
         r = subprocess.run(
             ["playwright", "install", "chromium"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         return r.returncode == 0
     except Exception:
@@ -293,6 +316,7 @@ def install_playwright_chromium() -> bool:
 # ─────────────────────────────────────────────
 # 7. Endpoint fallback chain
 # ─────────────────────────────────────────────
+
 
 @dataclass
 class Endpoint:
@@ -308,7 +332,9 @@ class EndpointChain:
     """Try endpoints in order until one succeeds. Solves DNS failures + wrong URLs."""
 
     def __init__(
-        self, endpoints: list[Endpoint], rotator: ImpersonateRotator | None = None,
+        self,
+        endpoints: list[Endpoint],
+        rotator: ImpersonateRotator | None = None,
     ) -> None:
         self.endpoints = endpoints
         self.rotator = rotator or ImpersonateRotator()
@@ -324,14 +350,22 @@ class EndpointChain:
                 headers = {**ep.headers, **overrides.get("headers", {})}
                 if ep.method.upper() == "POST":
                     resp = cffi.post(
-                        ep.url, json=overrides.get("json"),
-                        params=params, headers=headers,
-                        impersonate=imp, timeout=overrides.get("timeout", 10),
+                        ep.url,
+                        json=overrides.get("json"),
+                        params=params,
+                        headers=headers,
+                        # rotator yields a runtime-validated profile name;
+                        # curl_cffi types this as a closed Literal union.
+                        impersonate=imp,  # type: ignore[arg-type]
+                        timeout=overrides.get("timeout", 10),
                     )
                 else:
                     resp = cffi.get(
-                        ep.url, params=params, headers=headers,
-                        impersonate=imp, timeout=overrides.get("timeout", 10),
+                        ep.url,
+                        params=params,
+                        headers=headers,
+                        impersonate=imp,  # type: ignore[arg-type]
+                        timeout=overrides.get("timeout", 10),
                     )
                 if resp.status_code < 400:
                     return ep, resp

@@ -15,7 +15,6 @@
 """
 
 import sys
-from pathlib import Path
 
 from omk_crawl.cookies import CookieManager
 from omk_crawl.naver import NaverCafeClient, NaverConfig
@@ -51,21 +50,33 @@ def main(cookie_file: str, club_id: str, max_pages: int = 3) -> None:
 
     # 5) 권한 있는 게시글 수집
     print(f"\n=== 게시글 수집 (최대 {max_pages}페이지) ===")
-    result = cafe.crawl_articles(club_id, max_pages=max_pages, page_size=20)
-    if result.ok and result.data:
-        items = cafe.normalize_articles(result.data)
+    # crawl_articles() returns an already-normalized flat list of dicts — it is
+    # NOT a NaverResult, so it has no .ok/.data/.error and needs no second
+    # normalize_articles() pass. (check_login()/can_access() above DO return
+    # NaverResult; only this call differs.)
+    items = cafe.crawl_articles(club_id, max_pages=max_pages, page_size=20)
+    if items:
         print(f"수집 완료: {len(items)}건")
         for it in items[:10]:
-            print(f"  [{it['article_id']}] {it['subject'][:40]} | {it['author']} | 조회 {it['read_count']}")
+            print(
+                f"  [{it['article_id']}] {it['subject'][:40]} "
+                f"| {it['author']} | 조회 {it['read_count']}"
+            )
     else:
-        print(f"수집 실패: {result.error}")
+        print("수집 실패: 게시글 0건 — 세션 만료, 읽기 권한 부족, 또는 빈 게시판")
 
     cafe.close()
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("사용법: python naver_private_cafe_own_session.py <cookies.json> <club_id> [max_pages]")
+        print(
+            "사용법: python naver_private_cafe_own_session.py <cookies.json> <club_id> [max_pages]"
+        )
         sys.exit(1)
-    pages = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+    try:
+        pages = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+    except ValueError:
+        print(f"max_pages 는 정수여야 합니다: {sys.argv[3]!r}")
+        sys.exit(2)
     main(sys.argv[1], sys.argv[2], pages)

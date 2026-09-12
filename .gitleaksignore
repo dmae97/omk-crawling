@@ -1,0 +1,22 @@
+# Justified gitleaks suppressions (format: <path>:<rule-id>:<line>).
+# Every path below is gitignored and never enters version control; each entry
+# documents WHY the match is not an actionable credential.
+
+# Third-party SDK integrity tokens inside an extracted, gitignored APK
+# (apk/ in .gitignore). These are public Maven verification-metadata tokens
+# that ship inside every app built with these SDKs — not credentials, and
+# they cannot be rotated because we do not own the SDKs.
+apk/extracted/META-INF/io/sentry/sentry-android-replay/verification.properties:generic-api-key:3
+apk/extracted/META-INF/com/navercorp/nid/oauth/verification.properties:generic-api-key:3
+apk/extracted/META-INF/com/pierfrancescosoffritti/androidyoutubeplayer/core/verification.properties:generic-api-key:3
+
+# Local Playwright session state for the Reddit promo script. Gitignored
+# (promo/reddit/.reddit_storage.json), never committed, refreshed by re-login.
+# Not source code and not distributable.
+promo/reddit/.reddit_storage.json:jwt:1
+
+# Public webpage snapshot (old.reddit.com/r/programming) inside gitignored
+# RE artifacts (re_artifacts/). Page-embedded scripts contain strings matching
+# the generic-api-key heuristic; they are public page content, not credentials.
+re_artifacts/reddit_20260726/old_programming.html:generic-api-key:1
+re_artifacts/reddit_20260726/old_programming.html:generic-api-key:62

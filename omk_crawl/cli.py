@@ -9,6 +9,8 @@ Usage:
     omk-crawl --diagnose https://example.com         # dry-run: what would we try?
     omk-crawl --tools                                # list installed tools
     omk-crawl report.pdf                             # file → markdown (markitdown)
+    omk-crawl capture.har --json                     # offline web/app API inventory
+    omk-crawl capture.har --json --har-bodies        # opt in to JSON response bodies
     omk-crawl app.apk                                # Android package surface
     omk-crawl app.ipa                                # iOS package surface
     omk-crawl android://                             # adb device list
@@ -30,10 +32,10 @@ import json
 import sys
 from pathlib import Path
 
-from omk_crawl import star
+from omk_crawl import __version__, star
 from omk_crawl.detect import available_tools, missing_tools
 from omk_crawl.result import CrawlResult
-from omk_crawl.router import SmartRouter, crawl
+from omk_crawl.router import SmartRouter
 
 
 def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None = None) -> None:
@@ -66,9 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="omk-crawl",
-        description=(
-            "Smart crawling toolbox — web auto-escalation + Android/iOS surfaces"
-        ),
+        description=("Smart crawling toolbox — web auto-escalation + Android/iOS surfaces"),
         epilog=(
             "Web: curl_cffi → crawl4ai → scrapling → browser-use. "
             "Mobile: apk / ipa / android:// (adb). "
@@ -78,30 +78,62 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "url",
         nargs="?",
-        help="URL, file path, .apk/.ipa, or android:// scheme",
+        help="URL, file path, .har/.apk/.ipa, or android:// scheme",
     )
     parser.add_argument("--tool", "-t", help="Force a specific tool (skip auto-escalation)")
     parser.add_argument("--output", "-o", help="Save output to file")
     parser.add_argument("--json", "-j", action="store_true", help="JSON output")
+    parser.add_argument(
+        "--har-bodies",
+        action="store_true",
+        help="Include HAR JSON response bodies (may contain sensitive data; use with --json)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose escalation log")
     parser.add_argument(
-        "--no-robots", action="store_true",
+        "--no-robots",
+        action="store_true",
         help="Skip robots.txt check (use responsibly)",
     )
     parser.add_argument(
-        "--min-delay", type=float, default=0.5,
+        "--min-delay",
+        type=float,
+        default=0.5,
         help="Minimum seconds between requests to same domain (default: 0.5)",
     )
+    parser.add_argument("--timeout", type=float, help="Per-adapter timeout upper bound in seconds")
     parser.add_argument(
-        "--diagnose", action="store_true",
+        "--total-timeout",
+        type=float,
+        default=120.0,
+        help="Shared cooperative deadline in seconds (default: 120)",
+    )
+    parser.add_argument(
+        "--max-attempts", type=int, default=8, help="Maximum adapters to try (default: 8)"
+    )
+    parser.add_argument("--max-fetches", type=int, help="Maximum adapter calls, including retries")
+    parser.add_argument(
+        "--max-retries", type=int, default=1, help="Retries per adapter (default: 1)"
+    )
+    parser.add_argument(
+        "--no-browser", action="store_true", help="Disable browser adapters and fallback"
+    )
+    parser.add_argument(
+        "--allow-llm",
+        action="store_true",
+        help="Opt into LLM-backed adapters; provider charges may apply",
+    )
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
         help="Dry-run: show what tools would be tried",
     )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
     parser.add_argument(
-        "--star", action="store_true",
+        "--star",
+        action="store_true",
         help=f"Star {star.REPO} on GitHub (uses gh CLI if authenticated, else opens browser)",
     )
-    parser.add_argument("--version", action="version", version="omk-crawl 2.11.0")
+    parser.add_argument("--version", action="version", version=f"omk-crawl {__version__}")
     return parser
 
 
@@ -131,67 +163,34 @@ def _main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
+    target = args.url
+    try:
+        router = SmartRouter(
+            tools=[args.tool] if args.tool else None,
+            verbose=args.verbose,
+            respect_robots=not args.no_robots,
+            min_delay=args.min_delay,
+            total_timeout=args.total_timeout,
+            max_attempts=args.max_attempts,
+            max_fetches=args.max_fetches,
+            max_retries=args.max_retries,
+            allow_browser=not args.no_browser,
+            allow_llm=args.allow_llm,
+        )
+    except (ValueError, TypeError) as error:
+        parser.error(str(error))
+    tool_kwargs = {}
+    if args.timeout is not None:
+        tool_kwargs["timeout"] = args.timeout
+    if args.har_bodies:
+        target_tool = args.tool or router.diagnose(target)["target_tool"]
+        if target_tool != "har" or not args.json:
+            parser.error("--har-bodies requires a local HAR input (or --tool har) and --json")
+        tool_kwargs["include_bodies"] = True
     if args.diagnose:
-        router = SmartRouter(verbose=True)
-        info = router.diagnose(args.url)
-        print(json.dumps(info, indent=2))
+        print(json.dumps(router.diagnose(target, **tool_kwargs), indent=2))
         return 0
 
-    target = args.url
-    path = Path(target)
-
-    # --- Mobile / native schemes & packages ---
-    forced_tool = args.tool
-    lower = target.lower()
-    if forced_tool is None:
-        if lower.startswith(("android://", "adb://", "device://")):
-            forced_tool = "scrcpy"
-        elif lower.startswith(("appstore://", "ios://")) or lower in {"appstore", "ios"}:
-            forced_tool = "appstore"
-        elif lower.startswith("reddit://") or lower == "reddit":
-            forced_tool = "reddit"
-        elif lower.startswith("baemin://") or lower == "baemin":
-            forced_tool = "baemin"
-        elif "reddit.com" in lower and lower.startswith("http"):
-            forced_tool = "reddit"
-        elif lower.startswith("apk://") or (
-            path.is_file() and path.suffix.lower() in {".apk", ".xapk", ".apks"}
-        ):
-            forced_tool = "apk"
-        elif lower.startswith("ipa://") or (path.is_file() and path.suffix.lower() == ".ipa"):
-            forced_tool = "ipa"
-
-    if forced_tool in {
-        "apk",
-        "ipa",
-        "scrcpy",
-        "android",
-        "baemin",
-        "reddit",
-        "appstore",
-        "ios",
-    }:
-        from omk_crawl.tools import get_tool
-
-        tool_name = {
-            "android": "scrcpy",
-            "ios": "appstore",
-        }.get(forced_tool, forced_tool)
-        tool = get_tool(tool_name)
-        r = tool.fetch(target)
-        _print_result(r, as_json=args.json, output=args.output)
-        return 0 if r.ok else 1
-
-    # File path → markitdown (docs/media)
-    if path.is_file():
-        from omk_crawl.tools.markitdown_tool import MarkitdownTool
-
-        tool = MarkitdownTool()
-        r = tool.fetch(target)
-        _print_result(r, as_json=args.json, output=args.output)
-        return 0 if r.ok else 1
-
-    # Web crawl with auto-escalation
     if args.verbose:
         import logging
 
@@ -200,10 +199,7 @@ def _main(argv: list[str] | None = None) -> int:
             format="  [omk-crawl] %(message)s",
         )
 
-    r = crawl(
-        target, tool=forced_tool, verbose=args.verbose,
-        respect_robots=not args.no_robots, min_delay=args.min_delay,
-    )
+    r = router.crawl(target, **tool_kwargs)
 
     if args.verbose:
         print(f"\n--- {r.summary()} ---\n", file=sys.stderr)

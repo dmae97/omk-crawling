@@ -16,13 +16,16 @@ cortarNo (행정동 코드):
 ※ Rate limit 있음: 요청 간 2초 이상 딜레이
 """
 
+import json
+import sys
+import time
+
 from curl_cffi import requests
-import json, sys, time
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/124.0.0.0 Safari/537.36",
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36",
     "Referer": "https://new.land.naver.com/",
     "Accept": "application/json",
 }
@@ -106,7 +109,7 @@ def main():
 
         print(f"  {len(complexes)}개 단지 발견\n")
         print(f"  {'단지명':<20} {'유형':<6} {'준공':<8} {'세대':<6} {'면적(㎡)':<14} {'가격'}")
-        print(f"  {'-'*20} {'-'*6} {'-'*8} {'-'*6} {'-'*14} {'-'*12}")
+        print(f"  {'-' * 20} {'-' * 6} {'-' * 8} {'-' * 6} {'-' * 14} {'-' * 12}")
 
         for c in complexes[:30]:
             name = c.get("complexName", "?")
@@ -138,7 +141,12 @@ def main():
                     time.sleep(2)  # rate limit
                     try:
                         detail_url = f"{BASE}/complexes/{cno}"
-                        dr = requests.get(detail_url, headers=HEADERS, impersonate="chrome124", timeout=10)
+                        dr = requests.get(
+                            detail_url,
+                            headers=HEADERS,
+                            impersonate="chrome124",
+                            timeout=10,
+                        )
                         if dr.status_code == 200:
                             d = dr.json()
                             print(f"    {cname}: {json.dumps(d, ensure_ascii=False)[:200]}")

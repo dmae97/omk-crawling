@@ -13,7 +13,7 @@ Respect each upstream license when you use the tool.
 | scrapy | 2.17.0 | BSD-3-Clause | https://github.com/scrapy/scrapy |
 | crawlee (JS) | 3.17.0 | Apache-2.0 | https://github.com/apify/crawlee |
 | crawlee (Python) | 1.8.3 | Apache-2.0 | https://github.com/apify/crawlee-python |
-| browser-use | 0.13.6 | MIT | https://github.com/browser-use/browser-use |
+| browser-use | 0.13.8 | MIT | https://github.com/browser-use/browser-use |
 | curl-impersonate | native (C) | MIT | https://github.com/lwthiker/curl-impersonate |
 | curl_cffi (binding) | 0.15.0 | MIT | https://github.com/lexiforest/curl_cffi |
 | autoscraper | 1.1.14 | MIT | https://github.com/alirezamika/autoscraper |

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -86,10 +87,9 @@ class AsyncBatchFetcher:
                 ct = resp.headers.get("content-type", "")
                 json_data = None
                 if "json" in ct:
-                    try:
+                    # Bad JSON body → leave json_data None; status still reported.
+                    with suppress(Exception):
                         json_data = resp.json()
-                    except Exception:
-                        pass
                 ok = resp.status_code < 400
                 if ok:
                     breaker.record_success()

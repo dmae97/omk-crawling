@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import suppress
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -66,27 +67,28 @@ class BaeminTool(BaseTool):
 
         parts = _parse_baemin_url(url)
         action = str(parts.get("action") or "shops")
-        cfg = BaeminConfig(
-            timeout=int(kwargs.get("timeout") or 15),
-            rate=float(kwargs.get("rate") or 1.0),
-        )
+        # Every caller-supplied number is best-effort: bad input keeps the
+        # BaeminConfig default rather than raising out of fetch().
+        cfg = BaeminConfig()
+        with suppress(TypeError, ValueError):
+            cfg.timeout = int(kwargs.get("timeout") or 15)
+        with suppress(TypeError, ValueError):
+            cfg.rate = float(kwargs.get("rate") or 1.0)
         if "lat" in parts:
-            try:
+            with suppress(TypeError, ValueError):
                 cfg.lat = float(parts["lat"])
-            except (TypeError, ValueError):
-                pass
         if "lng" in parts:
-            try:
+            with suppress(TypeError, ValueError):
                 cfg.lng = float(parts["lng"])
-            except (TypeError, ValueError):
-                pass
         client = BaeminClient(cfg)
 
         if action == "status":
             st = client.status()
-            md = "# Baemin client status\n\n```json\n" + __import__("json").dumps(
-                st, ensure_ascii=False, indent=2
-            ) + "\n```\n"
+            md = (
+                "# Baemin client status\n\n```json\n"
+                + __import__("json").dumps(st, ensure_ascii=False, indent=2)
+                + "\n```\n"
+            )
             return CrawlResult(
                 url=url,
                 status=CrawlStatus.OK,

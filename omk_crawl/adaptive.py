@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -42,6 +43,7 @@ log = get_logger("omk_crawl.adaptive")
 @dataclass
 class CapturedCall:
     """One XHR/fetch call captured during rendering."""
+
     url: str
     method: str
     status: int
@@ -70,6 +72,7 @@ class CapturedCall:
             return self.response_body
 
         import re
+
         raw = self.response_bytes
         hangul = re.compile(r"[가-힣]")
         best_text: str | None = None
@@ -87,22 +90,31 @@ class CapturedCall:
         if best_text is not None and best_score > 0:
             return best_text
 
-        # Non-Korean content: defer to charset_normalizer
+        # Non-Korean content: defer to charset_normalizer (optional dependency,
+        # declared in the `targets`/`all` extras). Absence is expected and
+        # silent; a decode blowing up is not, so it gets logged.
         try:
-            from charset_normalizer import from_bytes
-            result = from_bytes(raw).best()
-            if result is not None:
-                return str(result)
+            from charset_normalizer import from_bytes  # type: ignore[import-not-found]
+        except ImportError:
+            return self.response_body
+
+        try:
+            best = from_bytes(raw).best()
         except Exception:
-            pass
-        return self.response_body
+            log.debug(
+                "charset_normalizer failed on %d bytes; using response_body",
+                len(raw),
+                exc_info=True,
+            )
+            return self.response_body
+        return str(best) if best is not None else self.response_body
 
 
 @dataclass
 class FetchResult:
     ok: bool
     url: str
-    strategy: str = ""          # direct | session | render
+    strategy: str = ""  # direct | session | render
     status_code: int | None = None
     html: str | None = None
     json_data: Any = None
@@ -152,22 +164,32 @@ class AdaptiveFetcher:
     @staticmethod
     def _host(url: str) -> str:
         from urllib.parse import urlparse
+
         return urlparse(url).netloc
 
     # ── Strategy 1 & 2: HTTP (direct / session) ──
 
-    def _http(self, url: str, *, use_session: bool, params: dict | None = None,
-              headers: dict | None = None, method: str = "GET",
-              json_body: Any = None) -> FetchResult:
+    def _http(
+        self,
+        url: str,
+        *,
+        use_session: bool,
+        params: dict | None = None,
+        headers: dict | None = None,
+        method: str = "GET",
+        json_body: Any = None,
+    ) -> FetchResult:
         from curl_cffi import requests as cffi
 
         host = self._host(url)
         breaker = self.breakers.get(host)
         imp = self.rotator.next()
         base_headers = {
-            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/124.0.0.0 Safari/537.36"),
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
             "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
             "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
         }
@@ -179,7 +201,9 @@ class AdaptiveFetcher:
         def do() -> FetchResult:
             client = self.sessions.get() if use_session else cffi
             kwargs: dict[str, Any] = dict(
-                params=params, headers=base_headers, timeout=self.cfg.timeout,
+                params=params,
+                headers=base_headers,
+                timeout=self.cfg.timeout,
             )
             if not use_session:
                 kwargs["impersonate"] = imp
@@ -195,15 +219,16 @@ class AdaptiveFetcher:
             ct = resp.headers.get("content-type", "")
             json_data = None
             if "json" in ct:
-                try:
+                with suppress(Exception):
                     json_data = resp.json()
-                except Exception:
-                    pass
 
             ok = resp.status_code < 400
             return FetchResult(
-                ok=ok, url=url, strategy="session" if use_session else "direct",
-                status_code=resp.status_code, html=resp.text if "json" not in ct else None,
+                ok=ok,
+                url=url,
+                strategy="session" if use_session else "direct",
+                status_code=resp.status_code,
+                html=resp.text if "json" not in ct else None,
                 json_data=json_data,
                 error="" if ok else f"HTTP {resp.status_code}",
             )
@@ -217,8 +242,9 @@ class AdaptiveFetcher:
 
     # ── Strategy 3: Playwright render + intercept ──
 
-    def _render(self, url: str, *, wait_ms: int = 3000,
-                capture_filter: Callable[[str], bool] | None = None) -> FetchResult:
+    def _render(
+        self, url: str, *, wait_ms: int = 3000, capture_filter: Callable[[str], bool] | None = None
+    ) -> FetchResult:
         """Render page in a real browser and capture all JSON API calls.
 
         This is the powerful fallback: it discovers the site's real API
@@ -230,15 +256,18 @@ class AdaptiveFetcher:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return FetchResult(ok=False, url=url, strategy="render",
-                               error="playwright not installed")
+            return FetchResult(
+                ok=False, url=url, strategy="render", error="playwright not installed"
+            )
 
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 ctx_kwargs: dict[str, Any] = {
-                    "user_agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                   "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"),
+                    "user_agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
+                    ),
                     "locale": "ko-KR",
                     "viewport": {"width": 1280, "height": 900},
                 }
@@ -247,10 +276,12 @@ class AdaptiveFetcher:
                 if self.cfg.user_cookies:
                     host = self._host(url)
                     domain = host.split(":")[0]
-                    context.add_cookies([
-                        {"name": k, "value": v, "domain": domain, "path": "/"}
-                        for k, v in self.cfg.user_cookies.items()
-                    ])
+                    context.add_cookies(
+                        [
+                            {"name": k, "value": v, "domain": domain, "path": "/"}
+                            for k, v in self.cfg.user_cookies.items()
+                        ]
+                    )
                 page = context.new_page()
 
                 def on_response(resp):
@@ -261,22 +292,25 @@ class AdaptiveFetcher:
                             return
                         body = None
                         raw = None
-                        try:
+                        with suppress(Exception):
                             raw = resp.body()
                             body = raw.decode("utf-8", errors="replace")
-                        except Exception:
-                            try:
+                        if body is None:
+                            with suppress(Exception):
                                 body = resp.text()
-                            except Exception:
-                                pass
-                        captured.append(CapturedCall(
-                            url=resp.url, method=resp.request.method,
-                            status=resp.status, request_body=resp.request.post_data,
-                            response_body=body, response_bytes=raw,
-                            resource_type=resp.request.resource_type,
-                        ))
+                        captured.append(
+                            CapturedCall(
+                                url=resp.url,
+                                method=resp.request.method,
+                                status=resp.status,
+                                request_body=resp.request.post_data,
+                                response_body=body,
+                                response_bytes=raw,
+                                resource_type=resp.request.resource_type,
+                            )
+                        )
                     except Exception:
-                        pass
+                        log.debug("captured.append failed", exc_info=True)
 
                 page.on("response", on_response)
                 page.goto(url, wait_until="networkidle", timeout=self.cfg.render_timeout * 1000)
@@ -285,19 +319,30 @@ class AdaptiveFetcher:
                 browser.close()
 
             return FetchResult(
-                ok=True, url=url, strategy="render", status_code=200,
-                html=html, captured=captured,
+                ok=True,
+                url=url,
+                strategy="render",
+                status_code=200,
+                html=html,
+                captured=captured,
             )
         except Exception as e:
-            return FetchResult(ok=False, url=url, strategy="render",
-                               captured=captured, error=str(e)[:200])
+            return FetchResult(
+                ok=False, url=url, strategy="render", captured=captured, error=str(e)[:200]
+            )
 
     # ── Public API: adaptive fetch ──
 
-    def fetch(self, url: str, *, params: dict | None = None, headers: dict | None = None,
-              strategies: tuple[str, ...] = ("direct", "session", "render"),
-              capture_filter: Callable[[str], bool] | None = None,
-              render_wait_ms: int = 3000) -> FetchResult:
+    def fetch(
+        self,
+        url: str,
+        *,
+        params: dict | None = None,
+        headers: dict | None = None,
+        strategies: tuple[str, ...] = ("direct", "session", "render"),
+        capture_filter: Callable[[str], bool] | None = None,
+        render_wait_ms: int = 3000,
+    ) -> FetchResult:
         """Fetch with automatic escalation through the strategy ladder.
 
         Args:
@@ -321,11 +366,16 @@ class AdaptiveFetcher:
             log.info("strategy %s insufficient (%s), escalating", strat, r.error or "empty")
         return last or FetchResult(ok=False, url=url, error="no strategy succeeded")
 
-    def fetch_json_api(self, url: str, *, params: dict | None = None,
-                       headers: dict | None = None) -> FetchResult:
+    def fetch_json_api(
+        self, url: str, *, params: dict | None = None, headers: dict | None = None
+    ) -> FetchResult:
         """Fetch a known JSON API (direct HTTP only, fast path)."""
-        return self._http(url, use_session=False, params=params,
-                          headers={**(headers or {}), "Accept": "application/json"})
+        return self._http(
+            url,
+            use_session=False,
+            params=params,
+            headers={**(headers or {}), "Accept": "application/json"},
+        )
 
     def close(self) -> None:
         self.sessions.close()

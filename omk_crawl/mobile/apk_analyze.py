@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import subprocess
 import zipfile
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -413,10 +414,9 @@ def _scan_zip_strings(apk: Path) -> tuple[list[str], list[str], list[str], dict[
                             continue
                         hosts.add(h)
                     for m in _API_HINT_RE.findall(chunk):
-                        try:
+                        # Binary chunk may not decode — skip that hint.
+                        with suppress(Exception):
                             hints.add(m.decode("utf-8", "ignore")[:160])
-                        except Exception:
-                            pass
                     if offset > 12_000_000:
                         # cap per-file
                         break
@@ -492,7 +492,8 @@ def analyze_apk(path: str | Path) -> ApkReport:
         report.tool = f"{report.tool}+zip-scan"
 
     # Optional androguard enrichment
-    try:
+    # androguard is an optional extra; the zip-only report already stands.
+    with suppress(Exception):
         from androguard.misc import AnalyzeAPK  # type: ignore
 
         a, _, _ = AnalyzeAPK(str(apk))
@@ -502,7 +503,5 @@ def analyze_apk(path: str | Path) -> ApkReport:
         report.activities = sorted(set(report.activities) | set(a.get_activities() or []))
         report.services = sorted(set(a.get_services() or []))
         report.receivers = sorted(set(a.get_receivers() or []))
-    except Exception:
-        pass
 
     return report

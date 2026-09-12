@@ -155,6 +155,7 @@ class MockPartialTool(BaseTool):
 
 def _router_with(tools: list[BaseTool], **kwargs: Any) -> SmartRouter:
     """Create a SmartRouter that uses the given mock tool instances."""
+    kwargs.setdefault("learn_sites", False)
     router = SmartRouter(**kwargs)
     # Monkey-patch _get_chain to return our mocks
     router._get_chain = lambda: tools  # type: ignore[method-assign]
@@ -190,7 +191,7 @@ class TestEscalation:
         router = _router_with([MockBlockedTool(), MockPartialTool()])
         r = router.crawl("https://example.com")
         assert not r.ok
-        assert r.metadata.get("escalation_exhausted") is True
+        assert r.metadata.get("escalation_exhausted")
         assert r.metadata.get("attempts") == 2
         # Best attempt should be the one with more HTML
         assert r.tool == "mock_partial"
@@ -204,7 +205,12 @@ class TestEscalation:
         assert r.tool == "mock_error"
 
     def test_max_attempts_respected(self):
-        tools = [MockBlockedTool(), MockBlockedTool(), MockBlockedTool(), MockOKTool()]
+        tools: list[BaseTool] = [
+            MockBlockedTool(),
+            MockBlockedTool(),
+            MockBlockedTool(),
+            MockOKTool(),
+        ]
         router = _router_with(tools, max_attempts=2)
         r = router.crawl("https://example.com")
         assert not r.ok
@@ -384,7 +390,8 @@ class TestEnsureMarkdown:
     def test_only_script_leaves_markdown_none(self):
         """If HTML is only script/style, markdown stays None (not garbage)."""
         r = CrawlResult(
-            url="x", status=CrawlStatus.OK,
+            url="x",
+            status=CrawlStatus.OK,
             html="<script>var x=1;</script><style>.a{}</style>",
         )
         SmartRouter._ensure_markdown(r)
@@ -428,15 +435,14 @@ class TestRetry:
             CrawlResult(url="x", status=CrawlStatus.ERROR, error="Timeout: timed out")
         )
         assert SmartRouter._is_transient(
-            CrawlResult(url="x", status=CrawlStatus.ERROR,
-                        error="ConnectionError: connection reset")
+            CrawlResult(
+                url="x", status=CrawlStatus.ERROR, error="ConnectionError: connection reset"
+            )
         )
         assert not SmartRouter._is_transient(
             CrawlResult(url="x", status=CrawlStatus.ERROR, error="ValueError: bad input")
         )
-        assert not SmartRouter._is_transient(
-            CrawlResult(url="x", status=CrawlStatus.BLOCKED)
-        )
+        assert not SmartRouter._is_transient(CrawlResult(url="x", status=CrawlStatus.BLOCKED))
 
 
 class TestCrawlAsync:
@@ -481,7 +487,7 @@ class TestRobotsTxt:
         # Stub _robots_for to avoid network
         monkeypatch.setattr(detect, "_robots_for", lambda sn: None)
         result = detect.check_robots_txt("https://example.com/")
-        assert result is True  # fail-open
+        assert result  # fail-open
 
     def test_check_robots_txt_fail_open(self, monkeypatch):
         """Unreachable domain should return True (fail-open)."""
@@ -489,7 +495,7 @@ class TestRobotsTxt:
 
         monkeypatch.setattr(detect, "_robots_for", lambda sn: None)
         result = detect.check_robots_txt("https://this-domain-does-not-exist-12345.invalid/")
-        assert result is True
+        assert result
 
     def test_check_robots_txt_disallowed(self, monkeypatch):
         """URL explicitly disallowed by robots.txt returns False."""
@@ -501,7 +507,7 @@ class TestRobotsTxt:
         mock_rp.can_fetch.return_value = False
         monkeypatch.setattr(detect, "_robots_for", lambda sn: mock_rp)
         result = detect.check_robots_txt("https://example.com/private")
-        assert result is False
+        assert not result
 
     def test_robots_cache_hit(self, monkeypatch):
         """_robots_for is lru_cached — second call should not re-fetch."""
@@ -540,6 +546,7 @@ class TestRobotsGating:
         # This should never be called
         def boom(url, ua="*"):
             raise AssertionError("check_robots_txt should not be called")
+
         monkeypatch.setattr(router_mod, "check_robots_txt", boom)
         router = _router_with([MockOKTool()], respect_robots=False)
         r = router.crawl("https://example.com")
@@ -574,7 +581,8 @@ class TestEnsureMarkdownMarkitdown:
         mock_mid = MagicMock()
         mock_mid.return_value.convert.return_value.text_content = "# Converted"
         monkeypatch.setitem(
-            __import__("sys").modules, "markitdown",
+            __import__("sys").modules,
+            "markitdown",
             MagicMock(MarkItDown=mock_mid),
         )
         r = CrawlResult(url="x", status=CrawlStatus.OK, html="<h1>Hi</h1>")
@@ -589,7 +597,8 @@ class TestEnsureMarkdownMarkitdown:
         mock_mid = MagicMock()
         mock_mid.return_value.convert.return_value.text_content = ""
         monkeypatch.setitem(
-            __import__("sys").modules, "markitdown",
+            __import__("sys").modules,
+            "markitdown",
             MagicMock(MarkItDown=mock_mid),
         )
         r = CrawlResult(url="x", status=CrawlStatus.OK, html="<p>Hello</p>")
@@ -604,7 +613,8 @@ class TestEnsureMarkdownMarkitdown:
         mock_mid = MagicMock()
         mock_mid.return_value.convert.side_effect = RuntimeError("conversion boom")
         monkeypatch.setitem(
-            __import__("sys").modules, "markitdown",
+            __import__("sys").modules,
+            "markitdown",
             MagicMock(MarkItDown=mock_mid),
         )
         r = CrawlResult(url="x", status=CrawlStatus.OK, html="<p>Safe</p>")
@@ -619,11 +629,13 @@ class TestEnsureMarkdownMarkitdown:
         mock_mid = MagicMock()
         mock_mid.return_value.convert.return_value.text_content = ""
         monkeypatch.setitem(
-            __import__("sys").modules, "markitdown",
+            __import__("sys").modules,
+            "markitdown",
             MagicMock(MarkItDown=mock_mid),
         )
         r = CrawlResult(
-            url="x", status=CrawlStatus.OK,
+            url="x",
+            status=CrawlStatus.OK,
             html="<script>var x=1;</script><style>.a{}</style>",
         )
         SmartRouter._ensure_markdown(r)
@@ -631,14 +643,35 @@ class TestEnsureMarkdownMarkitdown:
 
 
 class TestRateLimitInRetry:
-    def test_rate_limit_called_on_retry(self):
-        """_rate_limit is called before each fetch attempt, including retries."""
+    def test_rate_limit_log_redacts_url_credentials(self, monkeypatch, caplog):
+        import omk_crawl.router as router_module
+
+        router_module._last_request.clear()
+        clock = iter([100.0, 100.0, 101.0])
+        monkeypatch.setattr(router_module.time, "monotonic", lambda: next(clock))
+        monkeypatch.setattr(router_module.time, "sleep", lambda _seconds: None)
+        router = SmartRouter(verbose=True, min_delay=1.0, learn_sites=False)
+
+        with caplog.at_level("INFO", logger="omk_crawl"):
+            router._rate_limit("https://user:secret@example.com/path")
+            router._rate_limit("https://user:secret@example.com/path")
+
+        assert "secret" not in caplog.text
+        assert "example.com" in caplog.text
+
+    def test_rate_slot_checked_on_retry(self, monkeypatch):
+        """Every fetch, including retries, goes through the shared rate-slot check."""
         tool = MockTransientTool(fail_count=1)
         router = _router_with([tool], max_retries=2, retry_delay=0.01, min_delay=0.0)
         rate_calls = []
-        router._rate_limit = lambda url: rate_calls.append(url)  # type: ignore[method-assign]
+        original = router._rate_wait
+
+        def checked(url):
+            rate_calls.append(url)
+            return original(url)
+
+        monkeypatch.setattr(router, "_rate_wait", checked)
         router.crawl("https://example.com")
-        # 1 initial + 1 retry = 2 rate limit calls
         assert len(rate_calls) == 2
 
 
@@ -649,7 +682,7 @@ class TestCLIFlags:
 
         parser = build_parser()
         args = parser.parse_args(["https://example.com", "--no-robots"])
-        assert args.no_robots is True
+        assert args.no_robots
 
     def test_min_delay_flag(self):
         """--min-delay sets the value."""

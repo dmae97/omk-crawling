@@ -4,22 +4,32 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omk-crawl"
-version = "2.11.0"
-description = "Smart crawling toolbox — web auto-escalation, adaptive API discovery, TLS rotation, Android/iOS surfaces, Naver/Baemin clients"
+version = "2.13.0"
+description = "Smart crawling toolbox — web auto-escalation, anti-detect browsers, fingerprint coherence, session warm-up, adaptive API discovery, Android/iOS surfaces"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [{ name = "omk-crawling contributors" }]
-keywords = ["crawl", "scrape", "extract", "markdown", "anti-bot", "tls-fingerprint", "android", "ios", "apk"]
+keywords = [
+  "crawl",
+  "scrape",
+  "extract",
+  "markdown",
+  "anti-bot",
+  "tls-fingerprint",
+  "android",
+  "ios",
+  "apk",
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
 ]
 
 # Core (zero-dep router + CLI)
@@ -30,6 +40,9 @@ dependencies = []
 curl = ["curl_cffi>=0.15,<1"]
 crawl4ai = ["crawl4ai>=0.9,<1"]
 scrapling = ["scrapling>=0.4,<1"]
+camoufox = ["camoufox[geoip]>=0.4,<1"]
+nodriver = ["nodriver>=0.48,<1"]
+patchright = ["patchright>=1.55,<2"]
 scrapy = ["scrapy>=2.17,<3"]
 crawlee = ["crawlee[all]>=1.8,<2"]
 browser = ["browser-use>=0.13,<1"]
@@ -38,32 +51,33 @@ markitdown = ["markitdown[all]>=0.1,<1"]
 selectolax = ["selectolax>=0.3,<1"]
 # Target clients (Naver Cafe/Land, Baemin) — TLS impersonation + parsing + rendering
 targets = [
-    "curl_cffi>=0.15,<1",
-    "beautifulsoup4>=4.12,<5",
-    "charset-normalizer>=3,<4",
-    "httpx>=0.27,<1",
-    "playwright>=1.40,<2",
+  "curl_cffi>=0.15,<1",
+  "beautifulsoup4>=4.12,<5",
+  "charset-normalizer>=3,<4",
+  "httpx>=0.27,<1",
+  "playwright>=1.40,<2",
 ]
 # Mobile static analysis (optional enrichment; zip path works without)
-mobile = [
-    "androguard>=4.1,<5",
-]
+mobile = ["androguard>=4.1,<5"]
 # All tools
 all = [
-    "curl_cffi>=0.15,<1",
-    "crawl4ai>=0.9,<1",
-    "scrapling>=0.4,<1",
-    "scrapy>=2.17,<3",
-    "crawlee[all]>=1.8,<2",
-    "browser-use>=0.13,<1",
-    "autoscraper>=1.1,<2",
-    "markitdown[all]>=0.1,<1",
-    "selectolax>=0.3,<1",
-    "beautifulsoup4>=4.12,<5",
-    "charset-normalizer>=3,<4",
-    "httpx>=0.27,<1",
-    "playwright>=1.40,<2",
-    "androguard>=4.1,<5",
+  "curl_cffi>=0.15,<1",
+  "crawl4ai>=0.9,<1",
+  "scrapling>=0.4,<1",
+  "camoufox[geoip]>=0.4,<1",
+  "nodriver>=0.48,<1",
+  "patchright>=1.55,<2",
+  "scrapy>=2.17,<3",
+  "crawlee[all]>=1.8,<2",
+  "browser-use>=0.13,<1",
+  "autoscraper>=1.1,<2",
+  "markitdown[all]>=0.1,<1",
+  "selectolax>=0.3,<1",
+  "beautifulsoup4>=4.12,<5",
+  "charset-normalizer>=3,<4",
+  "httpx>=0.27,<1",
+  "playwright>=1.40,<2",
+  "androguard>=4.1,<5",
 ]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
 
@@ -86,9 +100,11 @@ line-length = 100
 select = ["E", "F", "I", "W", "UP"]
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
+# No `asyncio_mode` here: the suite has zero `async def test_` — async code
+# paths are driven explicitly via `asyncio.run(...)`, which needs no plugin.
+# Setting it while pytest-asyncio is absent only raises PytestConfigWarning.
+# If you add `async def test_`, install the `dev` extra and mark them with
+# `@pytest.mark.asyncio` (pytest-asyncio's default strict mode).
 testpaths = ["tests"]
 addopts = "-m 'not live'"
-markers = [
-    "live: hits real network (deselect with -m 'not live')",
-]
+markers = ["live: hits real network (deselect with -m 'not live')"]

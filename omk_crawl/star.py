@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Final
 
@@ -61,11 +62,10 @@ def load_state() -> dict[str, Any]:
 
 def save_state(state: dict[str, Any]) -> None:
     path = state_path()
-    try:
+    # A nudge is never worth failing a crawl over.
+    with suppress(OSError):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    except OSError:
-        pass  # a nudge is never worth failing a crawl over
 
 
 def is_disabled() -> bool:
@@ -118,10 +118,9 @@ def _open_browser() -> bool:
 
 
 def _say(text: str) -> None:
-    try:
+    # stderr may be closed or non-UTF8 — never let a nudge break the caller.
+    with suppress(OSError, UnicodeError):
         print(text, file=sys.stderr)
-    except (OSError, UnicodeError):
-        pass
 
 
 def star_now(*, allow_browser: bool = True) -> str:

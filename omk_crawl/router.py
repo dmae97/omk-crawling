@@ -1,38 +1,25 @@
-"""SmartRouter — auto-detect blocking, escalate across tools until success.
+"""Target-aware crawl entry points, execution policy, and request pacing.
 
-The core innovation: you give it a URL, it figures out what's needed.
-
-    curl_cffi (0ms browser) → crawl4ai (render) → scrapling (stealth) → browser-use (LLM)
-
-Each step:
-  1. Fetch with current tool
-  2. Analyze response (detect.py)
-  3. If OK → return
-  4. If blocked → escalate to next tool
-  5. If all fail → return best attempt + diagnosis
-
-Retry: transient failures (timeout, connection reset) are retried with
-exponential backoff before escalating. Rate limiting: per-domain minimum
-delay between requests to avoid overwhelming target servers.
+Route planning lives in route_engine; budgeted adapter calls live in request_runner.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from importlib import import_module
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
-from omk_crawl.detect import check_robots_txt, detect_block, missing_tools
+from omk_crawl.detect import check_robots_txt
+from omk_crawl.pipeline import ensure_markdown
 from omk_crawl.result import CrawlResult, CrawlStatus
-from omk_crawl.routing import (
-    CONFIDENCE_THRESHOLD,
-    is_auth_block,
-    preferred_order,
-    reorder_tools,
-)
+from omk_crawl.retry_after import retry_after_seconds
+from omk_crawl.routing import SiteMemory, SiteMemoryStore
 from omk_crawl.tools import ESCALATION_CHAIN, get_tool
 from omk_crawl.tools.base import BaseTool
 
@@ -43,7 +30,7 @@ _last_request: dict[str, float] = {}
 _rate_lock = threading.Lock()
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class RouteDecision:
     """Why the router picked a tool."""
 
@@ -53,20 +40,32 @@ class RouteDecision:
     detection: str = ""
 
 
+@runtime_checkable
+class _RouteEngine(Protocol):
+    def diagnose(self, router: SmartRouter, url: str, kwargs: dict[str, Any]) -> dict[str, Any]: ...
+
+    def crawl_sync(self, router: SmartRouter, url: str, kwargs: dict[str, Any]) -> CrawlResult: ...
+
+    async def crawl_async(
+        self, router: SmartRouter, url: str, kwargs: dict[str, Any]
+    ) -> CrawlResult: ...
+
+
+def _route_engine() -> _RouteEngine:
+    module = import_module("omk_crawl.route_engine")
+    if not isinstance(module, _RouteEngine):
+        raise RuntimeError("route engine is not initialized")
+    return module
+
+
 @dataclass
 class SmartRouter:
-    """Auto-routing crawl engine with escalation.
-
-    Usage:
-        router = SmartRouter()
-        result = router.crawl("https://example.com")
-        print(result.summary())
-    """
+    """Select capable adapters and execute them within a shared cooperative budget."""
 
     # Tools to try, in escalation order. None = auto (all available).
     tools: list[str] | None = None
     # Stop escalating after this many attempts
-    max_attempts: int = 4
+    max_attempts: int = 8
     # Retry transient failures (timeout, connection reset) this many times
     max_retries: int = 1
     # Base delay for exponential backoff between retries (seconds)
@@ -82,6 +81,40 @@ class SmartRouter:
     # History of attempts
     history: list[CrawlResult] = field(default_factory=list)
     decisions: list[RouteDecision] = field(default_factory=list)
+    # Per-site strategy memory; appended to preserve positional compatibility
+    site_memory: SiteMemoryStore = field(default_factory=SiteMemory)
+    learn_sites: bool = True
+    # Refuse longer server-directed waits; do not retry earlier than Retry-After.
+    max_retry_delay: float = 30.0
+    # Cooperative deadline; includes waits and does not reset during escalation.
+    total_timeout: float | None = 120.0
+    max_fetches: int | None = None
+    allow_browser: bool = True
+    allow_llm: bool = False
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("retry_delay", self.retry_delay),
+            ("min_delay", self.min_delay),
+            ("max_retry_delay", self.max_retry_delay),
+        ):
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        for name, value, minimum in (
+            ("max_attempts", self.max_attempts, 1),
+            ("max_retries", self.max_retries, 0),
+            ("max_fetches", self.max_fetches, 1),
+        ):
+            if name == "max_fetches" and value is None:
+                continue
+            if type(value) is not int or value < minimum:
+                raise ValueError(f"{name} must be an integer >= {minimum}")
+        if self.total_timeout is not None and (
+            not math.isfinite(self.total_timeout) or self.total_timeout <= 0
+        ):
+            raise ValueError("total_timeout must be positive and finite, or None")
+        if type(self.allow_browser) is not bool or type(self.allow_llm) is not bool:
+            raise ValueError("allow_browser and allow_llm must be booleans")
 
     def _get_chain(self) -> list[BaseTool]:
         if self.tools is not None:
@@ -99,200 +132,15 @@ class SmartRouter:
 
     def crawl(self, url: str, **kwargs: Any) -> CrawlResult:
         """Synchronous crawl with auto-escalation and retry."""
-        merged = {**self.tool_kwargs, **kwargs}
-        chain = self._get_chain()
-
-        if not chain:
-            missing = missing_tools()
-            return CrawlResult(
-                url=url,
-                status=CrawlStatus.TOOL_MISSING,
-                error=(
-                    "No crawling tools installed."
-                    f" Try: pip install curl_cffi  (missing: {missing})"
-                ),
-            )
-
-        if self.respect_robots and not check_robots_txt(url):
-            return CrawlResult(
-                url=url,
-                status=CrawlStatus.ERROR,
-                error="Blocked by robots.txt. Use respect_robots=False to override.",
-            )
-
-        best: CrawlResult | None = None
-        pending = list(chain)              # tool objects still to try
-        chain_names = [t.name for t in chain]
-        attempts = 0
-        rerouted = False
-
-        while pending and attempts < self.max_attempts:
-            tool = pending.pop(0)
-            attempts += 1
-            self._log(f"[{attempts}/{len(chain)}] Trying {tool.name}...")
-            result = self._fetch_with_retry(tool, url, **merged)
-            self.history.append(result)
-
-            # Run detection on the result for routing decisions
-            det = detect_block(result.html, result.status_code)
-            result.metadata.setdefault("detection", det.detail)
-            result.metadata["block_type"] = det.block.name
-
-            self.decisions.append(
-                RouteDecision(
-                    tool=tool.name,
-                    reason=self._escalation_reason(result),
-                    attempt=attempts,
-                    detection=det.detail,
-                )
-            )
-
-            if result.ok:
-                self._log(f"  ✓ {tool.name} succeeded ({result.elapsed_ms:.0f}ms)")
-                self._ensure_markdown(result)
-                return result
-
-            detail = result.error or det.detail
-            self._log(
-                f"  ✗ {tool.name}: {result.status.value} — {detail}"
-            )
-
-            # Keep best attempt for fallback
-            if best is None or self._score(result) > self._score(best):
-                best = result
-
-            # Don't escalate if it's a hard error (not a block)
-            if result.status is CrawlStatus.ERROR and not result.blocked:
-                self._log("  Hard error, stopping escalation.")
-                break
-
-            # Auth required → we do NOT bypass authentication; stop.
-            if is_auth_block(det.block):
-                self._log("  Auth required — not escalating (no bypass).")
-                result.metadata["auth_stop"] = True
-                break
-
-            # Detection-aware reroute of the remaining tools (once).
-            if not rerouted and det.confidence >= CONFIDENCE_THRESHOLD and pending:
-                remaining_names = [t.name for t in pending]
-                new_order = preferred_order(
-                    det.block, det.confidence, remaining_names, chain_names,
-                )
-                if new_order != remaining_names:
-                    self._log(f"  Reroute on {det.block.name}: next → {new_order}")
-                    result.metadata["rerouted_to"] = new_order
-                pending = reorder_tools(pending, new_order)
-                rerouted = True
-
-        # All tools failed — return best attempt
-        if best:
-            best.metadata["escalation_exhausted"] = True
-            best.metadata["attempts"] = len(self.history)
-            self._ensure_markdown(best)
-            return best
-
-        return CrawlResult(url=url, status=CrawlStatus.ERROR, error="No tools available")
+        return _route_engine().crawl_sync(self, url, kwargs)
 
     async def crawl_async(self, url: str, **kwargs: Any) -> CrawlResult:
         """Async crawl with auto-escalation and retry."""
-        merged = {**self.tool_kwargs, **kwargs}
-        chain = self._get_chain()
+        return await _route_engine().crawl_async(self, url, kwargs)
 
-        if not chain:
-            return CrawlResult(
-                url=url,
-                status=CrawlStatus.TOOL_MISSING,
-                error="No crawling tools installed. pip install curl_cffi",
-            )
-
-        if self.respect_robots and not check_robots_txt(url):
-            return CrawlResult(
-                url=url,
-                status=CrawlStatus.ERROR,
-                error="Blocked by robots.txt. Use respect_robots=False to override.",
-            )
-
-        best: CrawlResult | None = None
-        pending = list(chain)
-        chain_names = [t.name for t in chain]
-        attempts = 0
-        rerouted = False
-
-        while pending and attempts < self.max_attempts:
-            tool = pending.pop(0)
-            attempts += 1
-            result = await self._fetch_async_with_retry(tool, url, **merged)
-            self.history.append(result)
-
-            det = detect_block(result.html, result.status_code)
-            result.metadata.setdefault("detection", det.detail)
-            result.metadata["block_type"] = det.block.name
-
-            self.decisions.append(
-                RouteDecision(
-                    tool=tool.name,
-                    reason=self._escalation_reason(result),
-                    attempt=attempts,
-                    detection=det.detail,
-                )
-            )
-
-            if result.ok:
-                self._ensure_markdown(result)
-                return result
-
-            if best is None or self._score(result) > self._score(best):
-                best = result
-
-            if result.status is CrawlStatus.ERROR and not result.blocked:
-                break
-
-            if is_auth_block(det.block):
-                result.metadata["auth_stop"] = True
-                break
-
-            if not rerouted and det.confidence >= CONFIDENCE_THRESHOLD and pending:
-                remaining_names = [t.name for t in pending]
-                new_order = preferred_order(
-                    det.block, det.confidence, remaining_names, chain_names,
-                )
-                if new_order != remaining_names:
-                    result.metadata["rerouted_to"] = new_order
-                pending = reorder_tools(pending, new_order)
-                rerouted = True
-
-        if best:
-            best.metadata["escalation_exhausted"] = True
-            best.metadata["attempts"] = len(self.history)
-            self._ensure_markdown(best)
-            return best
-
-        return CrawlResult(url=url, status=CrawlStatus.ERROR, error="No tools available")
-
-    def diagnose(self, url: str) -> dict[str, Any]:
-        """Dry-run: check what tools are available and what we'd try.
-
-        Includes the detection-aware routing table so callers can see *why* a
-        given block type would reorder the chain.
-        """
-        from omk_crawl.routing import DEFAULT_ORDER, ROUTE_TABLE
-
-        chain = self._get_chain()
-        available = [t.name for t in chain]
-        # For each block type, show the preferred order filtered to what's
-        # actually installed — "if we detect X, we try these next".
-        routing = {
-            bt.name: preferred_order(bt, 0.9, available, DEFAULT_ORDER)
-            for bt in ROUTE_TABLE
-        }
-        return {
-            "url": url,
-            "available_tools": available,
-            "missing_tools": missing_tools(),
-            "escalation_order": [t.name for t in chain[: self.max_attempts]],
-            "routing": routing,
-            "install_hint": "pip install omk-crawl[all]",
-        }
+    def diagnose(self, url: str, **kwargs: Any) -> dict[str, Any]:
+        """Plan the actual target route and policy skips without fetching it."""
+        return _route_engine().diagnose(self, url, kwargs)
 
     @staticmethod
     def _score(r: CrawlResult) -> float:
@@ -319,126 +167,101 @@ class SmartRouter:
         return r.error or "failed"
 
     @staticmethod
-    def _ensure_markdown(r: CrawlResult) -> None:
-        """Convert HTML to markdown if the tool didn't provide it.
-
-        Tries markitdown first (proper HTML→Markdown conversion).
-        Falls back to tag-stripping with <script>/<style> removal
-        and HTML entity unescaping. If the result is trivial
-        (empty after conversion/stripping), leaves markdown as None
-        so that Pipeline.to_markdown() can handle it later.
-
-        Never raises — all conversion errors are caught and fall
-        through to the tag-strip fallback.
-        """
-        if r.markdown or not r.html:
-            return
-        # Try markitdown for proper conversion
-        try:
-            import os
-            import tempfile
-
-            from markitdown import MarkItDown
-
-            with tempfile.NamedTemporaryFile(
-                "w", suffix=".html", delete=False,
-            ) as f:
-                f.write(r.html)
-                path = f.name
-            try:
-                text = MarkItDown().convert(path).text_content
-                if text and text.strip():
-                    r.markdown = text
-                    r.metadata.setdefault("markdown_source", "markitdown")
-                    return
-            finally:
-                os.unlink(path)
-        except Exception:
-            pass  # markitdown unavailable or conversion failed — fall through
-        # Fallback: strip tags
-        import html as html_mod
-        import re
-
-        text = re.sub(
-            r"<script[^>]*>.*?</script>", "", r.html,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        text = re.sub(
-            r"<style[^>]*>.*?</style>", "", text,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        text = re.sub(r"<[^>]+>", "", text)
-        text = html_mod.unescape(text).strip()
-        if text:
-            r.markdown = text
-            r.metadata.setdefault("markdown_source", "tag-strip")
+    def _ensure_markdown(result: CrawlResult) -> None:
+        ensure_markdown(result)
 
     def _log(self, msg: str) -> None:
         if self.verbose:
             logger.info(msg)
 
-    def _rate_limit(self, url: str) -> None:
-        """Enforce minimum delay between requests to the same domain."""
+    @staticmethod
+    def _check_robots(url: str) -> bool:
+        return check_robots_txt(url)
+
+    def _record_decision(self, tool: str, reason: str, attempt: int, detection: str) -> None:
+        self.decisions.append(RouteDecision(tool, reason, attempt, detection))
+
+    def _rate_wait(self, url: str) -> float:
+        """Claim a domain slot only when ready; never sleep under the shared lock."""
         if self.min_delay <= 0:
-            return
-        domain = urlparse(url).netloc
+            return 0.0
+        try:
+            parsed = urlparse(url if "://" in url else f"//{url}")
+            domain = parsed.hostname or ""
+        except ValueError:
+            domain = ""
         with _rate_lock:
             now = time.monotonic()
-            last = _last_request.get(domain, 0.0)
-            elapsed = now - last
-            if elapsed < self.min_delay:
-                wait = self.min_delay - elapsed
-                self._log(f"  Rate limit: waiting {wait:.1f}s for {domain}")
-                time.sleep(wait)
-            _last_request[domain] = time.monotonic()
+            last = _last_request.get(domain)
+            wait = max(0.0, self.min_delay - (now - last)) if last is not None else 0.0
+            if wait == 0:
+                _last_request[domain] = now
+        if wait:
+            self._log(f"  Rate limit: waiting {wait:.1f}s for {domain}")
+        return wait
 
-    def _fetch_with_retry(self, tool: BaseTool, url: str, **kwargs: Any) -> CrawlResult:
-        """Fetch with rate limiting and exponential backoff retry."""
-        self._rate_limit(url)
-        result = tool.fetch(url, **kwargs)
-        for attempt in range(self.max_retries):
-            if not self._is_transient(result):
-                return result
-            delay = self.retry_delay * (2 ** attempt)
-            self._log(f"  Transient failure, retrying in {delay:.1f}s (attempt {attempt + 1})...")
-            time.sleep(delay)
-            self._rate_limit(url)
-            result = tool.fetch(url, **kwargs)
-        return result
+    def _rate_limit(self, url: str) -> None:
+        while wait := self._rate_wait(url):
+            time.sleep(wait)
 
-    async def _fetch_async_with_retry(
-        self, tool: BaseTool, url: str, **kwargs: Any,
-    ) -> CrawlResult:
-        """Async fetch with rate limiting and exponential backoff retry."""
-        import asyncio
+    async def _rate_limit_async(self, url: str) -> None:
+        while wait := self._rate_wait(url):
+            await asyncio.sleep(wait)
 
-        self._rate_limit(url)
-        result = await tool.fetch_async(url, **kwargs)
-        for attempt in range(self.max_retries):
-            if not self._is_transient(result):
-                return result
-            delay = self.retry_delay * (2 ** attempt)
-            self._log(f"  Transient failure, retrying in {delay:.1f}s (attempt {attempt + 1})...")
-            await asyncio.sleep(delay)
-            self._rate_limit(url)
-            result = await tool.fetch_async(url, **kwargs)
-        return result
+    def _retry_delay(self, result: CrawlResult, attempt: int, method: str) -> float | None:
+        if method.upper() not in {"GET", "HEAD", "OPTIONS"} or not self._is_transient(result):
+            return None
+        server_delay = retry_after_seconds(result.headers)
+        if server_delay is not None:
+            result.metadata["retry_after_seconds"] = server_delay
+            if server_delay > self.max_retry_delay:
+                result.metadata["retry_stop"] = "retry_after_limit"
+                return None
+        # ldexp avoids constructing a huge integer for caller-supplied retry counts.
+        try:
+            backoff = math.ldexp(self.retry_delay, attempt)
+        except OverflowError:
+            backoff = self.max_retry_delay
+        return max(min(backoff, self.max_retry_delay), server_delay or 0.0)
 
     @staticmethod
     def _is_transient(r: CrawlResult) -> bool:
-        """Check if a failure is transient (worth retrying)."""
+        """Retry temporary HTTP/transport failures, never authentication rejection."""
+        if r.status_code in (401, 403, 407):
+            return False
+        if r.status_code in (408, 429, 502, 503, 504):
+            return True
         if r.status is CrawlStatus.ERROR and r.error:
-            transient_markers = ("timeout", "timed out", "connection reset", "connection refused",
-                                 "connection aborted", "remote disconnected", "network unreachable")
+            transient_markers = (
+                "timeout",
+                "timed out",
+                "connection reset",
+                "connection refused",
+                "connection aborted",
+                "remote disconnected",
+                "network unreachable",
+            )
             return any(m in r.error.lower() for m in transient_markers)
         return False
 
 
 # --- Module-level convenience ---
 
+
 def crawl(
-    url: str, *, tool: str | None = None, verbose: bool = False,
-    respect_robots: bool = True, min_delay: float = 0.5, **kwargs: Any,
+    url: str,
+    *,
+    tool: str | None = None,
+    verbose: bool = False,
+    respect_robots: bool = True,
+    min_delay: float = 0.5,
+    total_timeout: float | None = 120.0,
+    max_attempts: int = 8,
+    max_fetches: int | None = None,
+    max_retries: int = 1,
+    allow_browser: bool = True,
+    allow_llm: bool = False,
+    **kwargs: Any,
 ) -> CrawlResult:
     """One-liner crawl with auto-escalation.
 
@@ -451,11 +274,42 @@ def crawl(
         verbose=verbose,
         respect_robots=respect_robots,
         min_delay=min_delay,
+        total_timeout=total_timeout,
+        max_attempts=max_attempts,
+        max_fetches=max_fetches,
+        max_retries=max_retries,
+        allow_browser=allow_browser,
+        allow_llm=allow_llm,
     )
     return router.crawl(url, **kwargs)
 
 
-async def crawl_async(url: str, *, tool: str | None = None, **kwargs: Any) -> CrawlResult:
-    """Async one-liner."""
-    router = SmartRouter(tools=[tool] if tool else None)
+async def crawl_async(
+    url: str,
+    *,
+    tool: str | None = None,
+    verbose: bool = False,
+    respect_robots: bool = True,
+    min_delay: float = 0.5,
+    total_timeout: float | None = 120.0,
+    max_attempts: int = 8,
+    max_fetches: int | None = None,
+    max_retries: int = 1,
+    allow_browser: bool = True,
+    allow_llm: bool = False,
+    **kwargs: Any,
+) -> CrawlResult:
+    """Async one-liner with the same routing controls as crawl()."""
+    router = SmartRouter(
+        tools=[tool] if tool else None,
+        verbose=verbose,
+        respect_robots=respect_robots,
+        min_delay=min_delay,
+        total_timeout=total_timeout,
+        max_attempts=max_attempts,
+        max_fetches=max_fetches,
+        max_retries=max_retries,
+        allow_browser=allow_browser,
+        allow_llm=allow_llm,
+    )
     return await router.crawl_async(url, **kwargs)

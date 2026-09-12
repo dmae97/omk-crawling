@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
+from unittest.mock import patch
+
 import pytest
 
 from omk_crawl.baemin import (
+    BaeminConfig,
     BaeminShop,
     normalize_shop,
     rank_shops,
@@ -17,6 +21,58 @@ from omk_crawl.tools.baemin_tool import BaeminTool, _parse_baemin_url
 def test_baemin_registered() -> None:
     assert "baemin" in ALL_TOOLS
     assert isinstance(get_tool("baemin"), BaeminTool)
+
+
+# ── config coercion: bad input must degrade to defaults, never raise ──────
+
+
+def _captured_cfg(url: str, **kwargs: object) -> BaeminConfig:
+    """Run BaeminTool.fetch far enough to capture the BaeminConfig it built."""
+    import omk_crawl.tools.baemin_tool as bt
+
+    seen: dict[str, BaeminConfig] = {}
+
+    class _FakeClient:
+        def __init__(self, cfg: BaeminConfig) -> None:
+            seen["cfg"] = cfg
+
+    with (
+        patch.object(BaeminTool, "available", return_value=True),
+        patch.object(bt, "BaeminClient", _FakeClient),
+        # _FakeClient deliberately implements nothing else; we only care that
+        # config construction happened without raising.
+        contextlib.suppress(AttributeError),
+    ):
+        BaeminTool().fetch(url, **kwargs)
+    return seen["cfg"]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "attr", "expected"),
+    [
+        ({"timeout": "abc"}, "timeout", 15),
+        ({"timeout": None}, "timeout", 15),
+        ({"rate": ["x"]}, "rate", 0.5),
+        ({"rate": object()}, "rate", 0.5),
+    ],
+)
+def test_bad_kwargs_fall_back_to_defaults(kwargs: dict, attr: str, expected: object) -> None:
+    cfg = _captured_cfg("baemin://shops", **kwargs)
+    assert getattr(cfg, attr) == expected
+
+
+def test_non_numeric_latlng_falls_back_to_defaults() -> None:
+    cfg = _captured_cfg("baemin://shops?lat=NaNaN&lng=zzz")
+    assert cfg.lat == pytest.approx(37.4979)
+    assert cfg.lng == pytest.approx(127.0276)
+
+
+def test_valid_values_are_applied() -> None:
+    cfg = _captured_cfg("baemin://shops?lat=36.8&lng=127.1", timeout=30, rate=2.0)
+    assert cfg.timeout == 30
+    assert cfg.rate == pytest.approx(2.0)
+    assert cfg.lat == pytest.approx(36.8)
+    assert cfg.lng == pytest.approx(127.1)
 
 
 def test_parse_baemin_url_coords() -> None:

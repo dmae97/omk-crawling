@@ -1,7 +1,10 @@
 """omk-crawl — Smart crawling toolbox (web + Android/iOS).
 
 Web auto-escalation:
-  insane_search → curl_cffi → crawl4ai → scrapling → browser-use
+  insane_search → curl_cffi → crawl4ai → scrapling → camoufox → patchright
+  → nodriver → browser-use
+Breakthrough layer (v2.12): cross-layer fingerprint coherence (fingerprint.py),
+seeded human behavior (behavior.py), session warm-up & clearance reuse (warmup.py).
 Plus extract/convert (autoscraper, markitdown) and mobile (apk, ipa, adb/scrcpy).
 
 Usage:
@@ -33,7 +36,16 @@ from omk_crawl.baemin import (
     rank_shops,
     shops_to_markdown,
 )
+from omk_crawl.behavior import BehaviorClock
 from omk_crawl.cookies import Cookie, CookieManager
+from omk_crawl.fingerprint import (
+    PROFILES,
+    FingerprintProfile,
+    coherence_issues,
+    match_impersonate,
+    profile_for,
+)
+from omk_crawl.har import analyze_har
 from omk_crawl.mobile import (
     AdbDevice,
     AppStoreApp,
@@ -66,28 +78,100 @@ from omk_crawl.stability import (
     TimeoutBudget,
     get_logger,
 )
+from omk_crawl.tools.x_search import XSearchTool, x_search
+from omk_crawl.trends import (
+    KNOWN_WOEIDS,
+    get_trends,
+    trend_to_tweets,
+    trending_with_content,
+)
+from omk_crawl.warmup import (
+    CLEARANCE_COOKIES,
+    SessionWarmup,
+    WarmSession,
+    warm_crawl,
+)
 
 __all__ = [
-    "CrawlResult", "CrawlStatus", "SmartRouter", "crawl", "crawl_async",
+    "CrawlResult",
+    "CrawlStatus",
+    "SmartRouter",
+    "crawl",
+    "crawl_async",
+    "analyze_har",
+    # breakthrough (v2.12): fingerprint coherence + behavior + warm sessions
+    "FingerprintProfile",
+    "PROFILES",
+    "profile_for",
+    "match_impersonate",
+    "coherence_issues",
+    "BehaviorClock",
+    "SessionWarmup",
+    "WarmSession",
+    "warm_crawl",
+    "CLEARANCE_COOKIES",
     # resilience
-    "TokenBucket", "RetryPolicy", "retry", "ResponseCache", "HeaderStore",
-    "ImpersonateRotator", "EndpointChain", "Endpoint", "ensure_playwright",
+    "TokenBucket",
+    "RetryPolicy",
+    "retry",
+    "ResponseCache",
+    "HeaderStore",
+    "ImpersonateRotator",
+    "EndpointChain",
+    "Endpoint",
+    "ensure_playwright",
     # stability
-    "CircuitBreaker", "CircuitState", "CircuitOpenError", "BreakerRegistry",
-    "SessionManager", "TimeoutBudget", "get_logger",
+    "CircuitBreaker",
+    "CircuitState",
+    "CircuitOpenError",
+    "BreakerRegistry",
+    "SessionManager",
+    "TimeoutBudget",
+    "get_logger",
     # adaptive
-    "AdaptiveFetcher", "AdaptiveConfig", "FetchResult", "CapturedCall",
+    "AdaptiveFetcher",
+    "AdaptiveConfig",
+    "FetchResult",
+    "CapturedCall",
     # async batch
-    "AsyncBatchFetcher", "BatchConfig", "BatchItem", "BatchResult",
+    "AsyncBatchFetcher",
+    "BatchConfig",
+    "BatchItem",
+    "BatchResult",
     # cookies (your own session)
-    "CookieManager", "Cookie",
+    "CookieManager",
+    "Cookie",
     # targets
-    "BaeminClient", "BaeminConfig", "BaeminResult", "BaeminShop",
-    "normalize_shop", "rank_shops", "shops_to_markdown",
-    "NaverLandClient", "NaverCafeClient", "NaverConfig", "NaverResult",
-    "RedditClient", "RedditConfig", "RedditPost", "RedditResult", "posts_to_markdown",
+    "BaeminClient",
+    "BaeminConfig",
+    "BaeminResult",
+    "BaeminShop",
+    "normalize_shop",
+    "rank_shops",
+    "shops_to_markdown",
+    "NaverLandClient",
+    "NaverCafeClient",
+    "NaverConfig",
+    "NaverResult",
+    "RedditClient",
+    "RedditConfig",
+    "RedditPost",
+    "RedditResult",
+    "posts_to_markdown",
     # mobile
-    "AdbDevice", "AppStoreApp", "AppStoreClient",
-    "analyze_apk", "analyze_ipa", "list_adb_devices",
+    "AdbDevice",
+    "AppStoreApp",
+    "AppStoreClient",
+    "analyze_apk",
+    "analyze_ipa",
+    "list_adb_devices",
+    # x_search (v2.13): session-based X search, no API/OAuth
+    "XSearchTool",
+    "x_search",
+    # trends (v2.13): guest-token X trends, no auth
+    "KNOWN_WOEIDS",
+    "get_trends",
+    "trend_to_tweets",
+    "trending_with_content",
 ]
-__version__ = "2.11.0"
+__version__ = "2.13.0"

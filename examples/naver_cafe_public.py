@@ -5,9 +5,13 @@
 - robots.txt·ToS 확인 필수
 """
 
-from curl_cffi import requests
+import json
+import re
+import sys
+import time
+
 from bs4 import BeautifulSoup
-import json, sys, time, re
+from curl_cffi import requests
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -20,7 +24,7 @@ HEADERS = {
 
 def get_cafe_articles(club_id: str, page: int = 1):
     """카페 게시글 목록 (공개 카페)"""
-    url = f"https://cafe.naver.com/ArticleList.nhn"
+    url = "https://cafe.naver.com/ArticleList.nhn"
     params = {
         "search.clubid": club_id,
         "search.menuid": "",  # 전체 게시판
@@ -71,7 +75,7 @@ def parse_article_list(html: str) -> list[dict]:
 
 def get_article_content(club_id: str, article_id: str) -> str:
     """개별 게시글 본문"""
-    url = f"https://cafe.naver.com/ArticleRead.nhn"
+    url = "https://cafe.naver.com/ArticleRead.nhn"
     params = {"clubid": club_id, "articleid": article_id}
     r = requests.get(url, params=params, headers=HEADERS, impersonate="chrome124")
     r.raise_for_status()
@@ -143,7 +147,7 @@ def main():
                     time.sleep(1)
             with open(out, "w", encoding="utf-8") as f:
                 json.dump(all_articles, f, ensure_ascii=False, indent=2)
-            print(f"  → 본문 포함 재저장 완료")
+            print("  → 본문 포함 재저장 완료")
 
 
 if __name__ == "__main__":

@@ -8,24 +8,34 @@ from omk_crawl.tools.autoscraper_tool import AutoscraperTool
 from omk_crawl.tools.baemin_tool import BaeminTool
 from omk_crawl.tools.base import BaseTool
 from omk_crawl.tools.browser_use_tool import BrowserUseTool
+from omk_crawl.tools.camoufox_tool import CamoufoxTool
 from omk_crawl.tools.crawl4ai_tool import Crawl4aiTool
 from omk_crawl.tools.curl_cffi_tool import CurlCffiTool
+from omk_crawl.tools.har_tool import HarTool
 from omk_crawl.tools.insane_search_tool import InsaneSearchTool
 from omk_crawl.tools.ipa_tool import IpaTool
 from omk_crawl.tools.markitdown_tool import MarkitdownTool
+from omk_crawl.tools.nodriver_tool import NodriverTool
+from omk_crawl.tools.patchright_tool import PatchrightTool
 from omk_crawl.tools.reddit_tool import RedditTool
 from omk_crawl.tools.scrapling_tool import ScraplingTool
 from omk_crawl.tools.scrcpy_tool import ScrcpyTool
+from omk_crawl.tools.x_search import XSearchTool
 
 # Escalation order: lightest → heaviest (web only).
 # Mobile adapters are opt-in via --tool / scheme routing (not in web chain).
 # InsaneSearch runs first as a hyper-aggressive single-shot breaker.
+# ④–⑥ are the 2026 breakthrough ladder: anti-detect browsers that pass the
+# behavioral vendors (DataDome/Kasada/PerimeterX) hunting Playwright artifacts.
 ESCALATION_CHAIN: list[type[BaseTool]] = [
     InsaneSearchTool,  # ⓪ 8-profile TLS rotation + stealth browser
-    CurlCffiTool,      # ① TLS fingerprint, no browser, instant
-    Crawl4aiTool,      # ② Browser render + Markdown
-    ScraplingTool,     # ③ Stealth browser + anti-bot bypass
-    BrowserUseTool,    # ④ LLM agent drives browser (last resort)
+    CurlCffiTool,  # ① TLS fingerprint, no browser, instant
+    Crawl4aiTool,  # ② Browser render + Markdown
+    ScraplingTool,  # ③ Stealth fetcher + anti-bot tricks
+    CamoufoxTool,  # ④ Anti-detect Firefox (C++-level FP injection)
+    PatchrightTool,  # ⑤ Patched undetected Playwright
+    NodriverTool,  # ⑥ CDP-native Chrome (DataDome/Kasada killer)
+    BrowserUseTool,  # ⑦ LLM agent drives browser (last resort)
 ]
 
 ALL_TOOLS: dict[str, type[BaseTool]] = {
@@ -33,9 +43,14 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
     "curl_cffi": CurlCffiTool,
     "crawl4ai": Crawl4aiTool,
     "scrapling": ScraplingTool,
+    "camoufox": CamoufoxTool,
+    "patchright": PatchrightTool,
+    "nodriver": NodriverTool,
     "browser_use": BrowserUseTool,
+    "x_search": XSearchTool,
     "autoscraper": AutoscraperTool,
     "markitdown": MarkitdownTool,
+    "har": HarTool,
     "baemin": BaeminTool,
     "reddit": RedditTool,
     # Mobile / native (layer 5)
@@ -47,9 +62,7 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
     "android": ScrcpyTool,  # alias
 }
 
-MOBILE_TOOLS: frozenset[str] = frozenset(
-    {"apk", "ipa", "appstore", "ios", "scrcpy", "android"}
-)
+MOBILE_TOOLS: frozenset[str] = frozenset({"apk", "ipa", "appstore", "ios", "scrcpy", "android"})
 TARGET_TOOLS: frozenset[str] = frozenset({"baemin", "reddit"})
 
 

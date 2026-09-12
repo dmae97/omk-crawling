@@ -21,6 +21,9 @@ class BlockType(Flag):
     AKAMAI = auto()  # Akamai Bot Manager / mPulse
     DATADOME = auto()  # DataDome CAPTCHA
     IMPERVA = auto()  # Imperva/Incapsula
+    KASADA = auto()  # Kasada KPSDK (x-kpsdk-ct)
+    PERIMETERX = auto()  # PerimeterX / HUMAN Security
+    AWS_WAF = auto()  # AWS WAF (aws-waf-token challenge)
     WAF = auto()  # generic WAF (403 + challenge page)
     RATE_LIMIT = auto()  # 429
     AUTH_REQUIRED = auto()  # 401 / login redirect
@@ -50,7 +53,11 @@ _TOOL_MODULES: dict[str, str] = {
     "browser_use": "browser_use",
     "autoscraper": "autoscraper",
     "markitdown": "markitdown",
-    # insane_search is always available (built-in adapter; optional deps inside)
+    # Stealth browsers (2026 breakthrough ladder)
+    "camoufox": "camoufox",
+    "nodriver": "nodriver",
+    "patchright": "patchright",
+    # Built-in adapter; availability still requires an HTTP or browser SDK.
     "insane_search": "omk_crawl.tools.insane_search_tool",
     # baemin uses curl_cffi; mark available when curl_cffi is importable
     "baemin": "curl_cffi",
@@ -59,11 +66,12 @@ _TOOL_MODULES: dict[str, str] = {
 
 # Host-binary / pure-python mobile tools — not importlib modules.
 _HOST_TOOLS: dict[str, str] = {
-    "apk": "always",       # zip scan always works
+    "har": "always",  # local capture inspection, stdlib only
+    "apk": "always",  # zip scan always works
     "ipa": "always",
     "appstore": "always",  # iTunes public API (+ urllib fallback)
     "ios": "always",
-    "scrcpy": "adb",        # needs adb on PATH
+    "scrcpy": "adb",  # needs adb on PATH
     "android": "adb",
 }
 
@@ -81,6 +89,8 @@ def _host_tool_available(name: str) -> bool:
 
 def tool_available(name: str) -> bool:
     """Check if a tool is usable (Python module or host binary)."""
+    if name == "insane_search":
+        return tool_available("curl_cffi") or tool_available("playwright")
     if name in _HOST_TOOLS:
         return _host_tool_available(name)
     mod = _TOOL_MODULES.get(name, name)
@@ -109,31 +119,83 @@ def missing_tools() -> list[str]:
 # --- Response analysis ---
 
 _CF_MARKERS = (
-    "cf-browser-verification", "cf_chl_opt", "cf_chl_rc",
-    "turnstile", "challenge-platform", "cloudflare",
-    "cf-ray", "__cf_bm", "cf_clearance",
+    "cf-browser-verification",
+    "cf_chl_opt",
+    "cf_chl_rc",
+    "turnstile",
+    "challenge-platform",
+    "cloudflare",
+    "cf-ray",
+    "__cf_bm",
+    "cf_clearance",
 )
 _AKAMAI_MARKERS = (
-    "akamai", "ak-bmsc", "bot manager",
-    "_abck", "bm_sz", "akam_rum",
+    "akamai",
+    "ak-bmsc",
+    "bot manager",
+    "_abck",
+    "bm_sz",
+    "akam_rum",
 )
 _DATADOME_MARKERS = (
-    "datadome", "dd-bypass", "geo-captcha",
-    "datadome-client", "datadome-captcha",
+    "datadome",
+    "dd-bypass",
+    "geo-captcha",
+    "datadome-client",
+    "datadome-captcha",
 )
 _IMPERVA_MARKERS = (
-    "imperva", "incapsula", "visid_incap",
-    "incap_ses", "_incap_", "reese84",
+    "imperva",
+    "incapsula",
+    "visid_incap",
+    "incap_ses",
+    "_incap_",
+    "reese84",
+)
+_KASADA_MARKERS = (
+    "kasada",
+    "kpsdk",
+    "x-kpsdk",
+    "ips.js",
+    "kpsdk-v",
+    "cd-captcha",
+)
+_PERIMETERX_MARKERS = (
+    "perimeterx",
+    "px-captcha",
+    "_pxhd",
+    "px-cdn",
+    "px-cloud",
+    "human security",
+)
+_AWS_WAF_MARKERS = (
+    "aws-waf-token",
+    "awswaf",
+    "aws waf",
+    "token.awswaf",
+    "aws-waf-integration",
 )
 _JS_MARKERS = (
-    "<noscript>", 'id="__next"', 'id="root"', 'id="app"',
-    "ng-app", "data-reactroot", "data-react-helmet",
+    "<noscript>",
+    'id="__next"',
+    'id="root"',
+    'id="app"',
+    "ng-app",
+    "data-reactroot",
+    "data-react-helmet",
 )
 _WAF_MARKERS = (
-    "access denied", "blocked", "captcha",
-    "are you a robot", "unusual traffic",
-    "security check", "ddos-guard", "perimeterx",
-    "press & hold", "please verify", "checking your browser",
+    "access denied",
+    "blocked",
+    "captcha",
+    "are you a robot",
+    "unusual traffic",
+    "security check",
+    "ddos-guard",
+    "perimeterx",
+    "press & hold",
+    "please verify",
+    "checking your browser",
 )
 
 
@@ -189,6 +251,27 @@ def detect_block(html: str | None, status_code: int | None) -> Detection:
         d.needs_stealth = True
         d.confidence = 0.8
         d.detail = "Imperva/Incapsula detected"
+
+    # Kasada KPSDK
+    if any(m in lower for m in _KASADA_MARKERS):
+        d.block |= BlockType.KASADA
+        d.needs_stealth = True
+        d.confidence = 0.85
+        d.detail = "Kasada KPSDK detected"
+
+    # PerimeterX / HUMAN Security
+    if any(m in lower for m in _PERIMETERX_MARKERS):
+        d.block |= BlockType.PERIMETERX
+        d.needs_stealth = True
+        d.confidence = 0.85
+        d.detail = "PerimeterX/HUMAN detected"
+
+    # AWS WAF
+    if any(m in lower for m in _AWS_WAF_MARKERS):
+        d.block |= BlockType.AWS_WAF
+        d.needs_stealth = True
+        d.confidence = 0.8
+        d.detail = "AWS WAF challenge detected"
 
     # JS-required
     if any(m in lower for m in _JS_MARKERS) and len(html) < 5000:
@@ -247,6 +330,7 @@ def detection_to_status(det: Detection) -> CrawlStatus:
 
 
 # --- robots.txt ---
+
 
 def check_robots_txt(url: str, user_agent: str = "*") -> bool:
     """Check if a URL is allowed by the site's robots.txt.

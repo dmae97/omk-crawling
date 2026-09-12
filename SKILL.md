@@ -1,13 +1,15 @@
 ---
 name: omk-crawling
-description: 'OMK 웹·데이터 수집/추출 툴박스 — 10개 도구를 목적별로 라우팅. crawl4ai(웹→LLM
+description: 'OMK 웹·데이터 수집/추출 툴���스 — 13개 도구 + 돌파(breakthrough) 레이어. crawl4ai(웹→LLM
   Markdown·딥크롤·MCP), scrapy(대규모 클래식), crawlee(큐·오토스케일·프록시), browser-use(LLM
   브라우저 에이전트), curl-impersonate/curl_cffi(TLS·JA3 위장 403 우회), autoscraper(예시→규칙
   학습), markitdown(파일→Markdown), scrcpy(Android 미러·제어), scrapling(스텔스·안티봇),
-  insane-search(단일 차단 URL). 크롤링·스크래핑·딥크롤·RAG 수집·마크다운 변환·안티봇
-  우회·브라우저 자동화·모바일 앱 수집 필요 시 사용.'
+  insane-search(단일 차단 URL), camoufox(안티디텍트 Firefox), nodriver(CDP 네이티브 Chrome),
+  patchright(패치된 Playwright). 돌파 레이어: 크로스레이어 지문 일관성(fingerprint), 시드 결정적
+  인간 행동(behavior), 세션 웜업·클리어런스 재사용(warmup). 크롤링·스크래핑·딥크롤·RAG 수집·
+  안티봇 우회·브라우저 자동화·모바일 앱 수집 필요 시 사용.'
 license: Apache-2.0
-version: 2.11.0
+version: 2.13.0
 metadata:
   category: research
   locale: ko-KR
@@ -19,12 +21,15 @@ metadata:
     - { name: crawl4ai,         repo: https://github.com/unclecode/crawl4ai,        pkg: 'pip:crawl4ai==0.9.2',       license: Apache-2.0 }
     - { name: scrapy,           repo: https://github.com/scrapy/scrapy,             pkg: 'pip:scrapy==2.17.0',        license: BSD-3-Clause }
     - { name: crawlee,          repo: https://github.com/apify/crawlee,             pkg: 'npm:crawlee@3.17.0 / pip:crawlee==1.8.3', license: Apache-2.0 }
-    - { name: browser-use,      repo: https://github.com/browser-use/browser-use,   pkg: 'pip:browser-use==0.13.6',   license: MIT }
+    - { name: browser-use,      repo: https://github.com/browser-use/browser-use,   pkg: 'pip:browser-use==0.13.8',   license: MIT }
     - { name: curl-impersonate, repo: https://github.com/lwthiker/curl-impersonate, pkg: 'C tool / pip:curl_cffi==0.15.0', license: MIT }
     - { name: autoscraper,      repo: https://github.com/alirezamika/autoscraper,   pkg: 'pip:autoscraper==1.1.14',   license: MIT }
     - { name: markitdown,       repo: https://github.com/microsoft/markitdown,      pkg: 'pip:markitdown[all]==0.1.6', license: MIT }
     - { name: scrcpy,           repo: https://github.com/Genymobile/scrcpy,         pkg: 'C tool (apt/brew/choco) v4.1', license: Apache-2.0 }
-    - { name: scrapling,        repo: https://github.com/d4vinci/Scrapling,         pkg: 'pip:scrapling==0.4.11',      license: BSD-3-Clause }
+    - { name: scrapling,        repo: https://github.com/d4vinci/Scrapling,         pkg: 'pip:scrapling==0.4.12',      license: BSD-3-Clause }
+    - { name: camoufox,         repo: https://github.com/daijro/camoufox,           pkg: 'pip:camoufox[geoip]>=0.4',   license: MPL-2.0 }
+    - { name: nodriver,         repo: https://github.com/ultrafunkamsterdam/nodriver, pkg: 'pip:nodriver>=0.48',       license: AGPL-3.0 }
+    - { name: patchright,       repo: https://github.com/MindsightsAI/patchright,   pkg: 'pip:patchright>=1.55',       license: Apache-2.0 }
     - { name: insane-search,    repo: https://github.com/fivetaku/gptaku_plugins,   pkg: 'gptaku plugin / built-in adapter', license: GPTaku }
 ---
 
@@ -40,20 +45,26 @@ metadata:
 
 ```
 ① Fetch / 안티핑거프린트   curl-impersonate·curl_cffi(TLS·JA3) · scrapling(스텔스) · insane-search(단일 URL)
-② Crawl 프레임워크         scrapy(클래식·생태계) · crawlee(큐·오토스케일·프록시) · crawl4ai(LLM·딥크롤·MCP)
-③ 브라우저 자동화          browser-use(LLM 에이전트) · crawl4ai/crawlee/scrapling(dynamic)
+② Crawl 프레임워크         scrapy(클���식·생태계) · crawlee(큐·오토스케일·프록시) · crawl4ai(LLM·딥크롤·MCP)
+③ 브라우저 자동화          camoufox(안티디텍트) · nodriver(CDP) · patchright(패치PW) · browser-use(LLM) · crawl4ai/scrapling
 ④ 추출                     autoscraper(학습형) · crawl4ai(CSS/LLM) · scrapling(셀렉터)
 ⑤ Markdown 변환            markitdown(파일: PDF·Office·이미지·오디오) · crawl4ai(웹)
 ⑥ 모바일·네이티브          apk/ipa 정적 분석 · scrcpy/adb(Android 미러·dumpsys) · [tools/mobile.md](references/tools/mobile.md)
+⓪ 돌파 레이어 (v2.12)     fingerprint(크로스레이어 지문 일관성) · behavior(시드 결정적 인간 행동)
+                          · warmup(세션 웜업→클리어런스 쿠키 재사용) — [breakthrough.md](references/breakthrough.md)
 ```
 
 ## 마스터 라우터 (목표 → 1순위 도구)
 
 | 목표 / 상황 | 1순위 | 참조 |
-|-------------|-------|------|
+| ------------- | ------- | ------ |
 | 차단된 URL **하나**만 열어 본문 확인 (403/WAF/SPA 단발) | `insane-search` | (형제 스킬) |
 | **TLS/JA3 핑거프린트**로 즉시 403 (브라우저 불필요) | **curl-impersonate** / `curl_cffi` | [tools/curl-impersonate.md](references/tools/curl-impersonate.md) |
 | 안티봇 **스텔스** + 정밀 CSS/XPath 반복 + Cloudflare Turnstile | `scrapling` | [tools/scrapling.md](references/tools/scrapling.md) |
+| **DataDome·Kasada·PerimeterX** (행동 기반 벤더) | `nodriver` → `camoufox` | [tools/nodriver.md](references/tools/nodriver.md) |
+| 안티디텍트 **Firefox** (C++ 레벨 지문 주입, geoip) | `camoufox` | [tools/camoufox.md](references/tools/camoufox.md) |
+| **Playwright 그대로** 탐지 패치만 입힌 드롭인 | `patchright` | [tools/patchright.md](references/tools/patchright.md) |
+| **한 번 통과한 세션 재사용** (cf_clearance 등) | `warm_crawl` | [breakthrough.md](references/breakthrough.md) |
 | **대규모 클래식 크롤** (파이프라인·미들웨어·성숙한 생태계) | **scrapy** | [tools/scrapy.md](references/tools/scrapy.md) |
 | **큐·오토스케일·프록시 로테이션**, JS/TS 또는 Python | **crawlee** | [tools/crawlee.md](references/tools/crawlee.md) |
 | 웹 → **LLM용 Markdown** / **딥크롤**(사이트·문서 전체) / **MCP** | **crawl4ai** | [choosing.md](references/choosing.md) |
@@ -70,6 +81,8 @@ metadata:
 ## 도구는 결합된다
 
 - **차단된 단일 URL** → `insane_search`(8개 프로필 TLS 로테이션 + 스텔스 브라우저)로 돌파 → 결과를 다른 도구로 파싱.
+- **웜 세션 리플레이** → `warm_crawl(url)`: 브라우저로 1회 통과(cf_clearance 수확) → 같은 지문으로 curl_cffi N회 리플레이. 차단되면 세션 폐기 후 라우터 폴��.
+- **지문 일관성** → `fingerprint.profile_for(url)`이 사이트별 정체성을 고정 — 모든 도구가 같은 TLS/UA/Client Hints/locale을 공유.
 - **핑거프린트 벽** → `curl_cffi`로 뚫고 → `crawl4ai arun("raw:<html>")` 또는 `scrapling.Selector`로 구조화.
 - **로그인 뒤 크롤** → `browser-use`로 로그인·세션 확보 → 쿠키를 `scrapy`/`crawlee`/`crawl4ai`에 넘겨 대량 수집.
 - **문서 사이트 RAG** → `crawl4ai` 딥크롤 → 첨부 PDF/PPTX는 `markitdown`으로 Markdown → 합쳐서 색인.
@@ -87,6 +100,9 @@ pip install autoscraper                             # 학습형 스크래퍼
 pip install 'markitdown[all]'                       # 파일→Markdown
 pip install curl_cffi                               # curl-impersonate 파이썬 바인딩
 pip install scrapling                               # 스텔스 스크래핑 프레임워크
+pip install 'camoufox[geoip]' && camoufox fetch     # 안티디텍트 Firefox (+geoip DB)
+pip install nodriver                                # CDP 네이티브 Chrome (undetected)
+pip install patchright && patchright install chromium  # 패치된 Playwright
 
 # ── Node/TS (crawlee 원본) ──
 npm install crawlee playwright
@@ -120,6 +136,7 @@ crawl4ai 세부는 [choosing](references/choosing.md) · [extraction](references
 각 도구의 "언제·설치·최소예제·함정"은 `references/tools/<도구>.md`.
 
 ### scrapy — 대규모 클래식 크롤
+
 ```bash
 scrapy startproject myproj && cd myproj
 scrapy genspider quotes quotes.toscrape.com
@@ -127,6 +144,7 @@ scrapy crawl quotes -O out.json
 ```
 
 ### crawlee — 큐·오토스케일·프록시 (Python)
+
 ```python
 from crawlee.crawlers import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
 crawler = BeautifulSoupCrawler(max_requests_per_crawl=50)
@@ -138,6 +156,7 @@ async def handler(ctx: BeautifulSoupCrawlingContext):
 ```
 
 ### browser-use — LLM 에이전트가 브라우저 조작
+
 ```python
 from browser_use import Agent, ChatBrowserUse
 agent = Agent(task="로그인 후 주문내역 첫 페이지를 요약", llm=ChatBrowserUse(model="bu-2-0"))
@@ -145,12 +164,14 @@ agent = Agent(task="로그인 후 주문내역 첫 페이지를 요약", llm=Cha
 ```
 
 ### curl_cffi — 브라우저 TLS 핑거프린트로 fetch
+
 ```python
 from curl_cffi import requests
 r = requests.get("https://tls.browserleaks.com/json", impersonate="chrome124")
 ```
 
 ### autoscraper — 예시로 규칙 학습
+
 ```python
 from autoscraper import AutoScraper
 s = AutoScraper()
@@ -160,15 +181,18 @@ s.save("so-model")
 ```
 
 ### markitdown — 파일 → Markdown
+
 ```bash
 markitdown report.pdf -o report.md
 ```
+
 ```python
 from markitdown import MarkItDown
 print(MarkItDown().convert("deck.pptx").text_content)
 ```
 
 ### scrapling — 스텔스 스크래핑
+
 ```python
 from scrapling import StealthyFetcher
 fetcher = StealthyFetcher()
@@ -177,6 +201,7 @@ print(page.css("h1::text"))
 ```
 
 ### scrcpy — Android 화면 미러·제어
+
 ```bash
 scrcpy                                  # 미러링+제어
 scrcpy --record session.mp4 --no-audio  # 세션 녹화
@@ -185,7 +210,7 @@ scrcpy --record session.mp4 --no-audio  # 세션 녹화
 ## references/
 
 | 경로 | 내용 |
-|------|------|
+| ------ | ------ |
 | [`references/routing.md`](references/routing.md) | **크로스-툴 결정 트리** (무엇을 언제) |
 | [`references/tools/*.md`](references/tools/) | 도구별 상세 (10개) |
 | [`references/choosing.md`](references/choosing.md) · [`extraction`](references/extraction.md) · [`deep-crawl`](references/deep-crawl.md) · [`docker-mcp`](references/docker-mcp.md) · [`cli`](references/cli.md) | crawl4ai 세부 |

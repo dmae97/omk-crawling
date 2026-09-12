@@ -2,20 +2,32 @@
 
 목표를 위에서부터 내려가며 **처음 맞는 줄**의 도구를 쓴다. 확신 없으면 가장 싸고 가벼운 것부터.
 
-```
+CLI·`crawl()`·`crawl_async()`의 실제 자동 분기와 예산은 [엔진 계약](engine.md)을 따른다.
+HAR/APK/IPA·기기 URI는 웹 체인에 보내지 않으며, LLM 어댑터는 `allow_llm=True` 또는
+`--allow-llm`을 명시해야 한다. 아래 표는 자동 체인 외의 수동 도구 조합도 포함한다.
+
+```text
 0. 데이터가 웹/HTTP에 없다 → Android 앱에만 있다
       └─ scrcpy (화면 미러·제어, 필요하면 --record 로 근거 남김)
 
-1. 대상이 "파일"이다 (PDF·docx·pptx·xlsx·이미지·오디오·이미 받은 HTML)
-      └─ markitdown  (→ Markdown, LLM 입력용)
+1. 대상이 "파일"이다
+      ├─ HAR → har (오프라인 엔드포인트·선택적 JSON 본문)
+      ├─ APK/XAPK/APKS·IPA → apk / ipa (정적 분석)
+      └─ PDF·docx·pptx·xlsx·이미지·오디오·이미 받은 HTML → markitdown
 
 2. 대상이 "웹페이지"다
    2a. 딱 한 URL만 열어 본문 확인 → insane-search (형제 스킬)
    2b. 접근 자격은 있는데 403/차단
          ├─ TLS/JA3·HTTP2 핑거프린트 차단 (브라우저 없이도 될 것 같다)
          │     └─ curl-impersonate / curl_cffi   (가장 가벼움)
-         └─ JS 렌더·Cloudflare Turnstile·강한 봇탐지
-               └─ scrapling (스텔스 브라우저 + 자기복구 파싱) → [tools/scrapling.md](tools/scrapling.md)
+         ├─ JS 렌더·Cloudflare Turnstile·강한 봇탐지
+         │     └─ scrapling (스텔스 브라우저 + 자기복구 파싱) → [tools/scrapling.md](tools/scrapling.md)
+         ├─ DataDome·Kasada·PerimeterX (행동 기반 벤더)
+         │     └─ nodriver (CDP 네이티브, 아티팩트無) → camoufox (엔진 레벨 위장)
+         ├─ AWS WAF 토큰 챌린지
+         │     └─ camoufox
+         └─ 한 번 통과한 세션을 싸게 재사용 (cf_clearance 등)
+               └─ warm_crawl (웜업→리플레이→폴��) → [breakthrough.md](breakthrough.md)
    2c. 로그인·다단계 클릭·폼 등 "사람처럼 조작"이 필요
          └─ browser-use (LLM 에이전트가 브라우저 운전)
    2d. 여러 페이지를 체계적으로 순회(크롤)
@@ -34,10 +46,14 @@
 ## 비교 요약
 
 | 도구 | 층 | 브라우저 | 강점 | 약점/비용 |
-|------|----|----------|------|-----------|
+| ------ | ---- | ---------- | ------ | ----------- |
 | curl-impersonate / curl_cffi | Fetch | ✗ | TLS/JA3 위장, 초경량·초고속 | JS 실행 불가 |
 | scrapling | Fetch/추출 | ✓(스텔스) | Cloudflare 자동해결, 자기복구 셀렉터 | 무거움 → [tools/scrapling.md](tools/scrapling.md) |
 | insane-search | Fetch | ✓ | 단일 하드블록 돌파 | 대량 X |
+| camoufox | 브라우저 | ✓(안티디텍트) | C++ 레벨 지문 주입, geoip | 무거움, 바이너리 별도 → [tools/camoufox.md](tools/camoufox.md) |
+| nodriver | 브라우저 | ✓(CDP) | DataDome/Kasada/PerimeterX 최강 | async 전용, AGPL → [tools/nodriver.md](tools/nodriver.md) |
+| patchright | 브라우저 | ✓(패치PW) | Playwright 드롭인 + 탐지 패치 | 바이너리 별도 → [tools/patchright.md](tools/patchright.md) |
+| warm_crawl | 세션 | ✓→✗ | 웜업 1회 → 가벼운 리플레이 N회 | 브라우저 1회 필요 → [breakthrough.md](breakthrough.md) |
 | scrapy | Crawl | ✗(기본) | 생태계·파이프라인·성숙 | JS는 플러그인 필요 |
 | crawlee | Crawl | 선택 | 큐·오토스케일·프록시·통합 스토리지 | 러닝커브 |
 | crawl4ai | Crawl/변환/추출 | ✓ | LLM Markdown·딥크롤·MCP | 브라우저 자원 |

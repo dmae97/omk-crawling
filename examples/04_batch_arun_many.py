@@ -6,8 +6,8 @@ import asyncio
 
 from crawl4ai import (
     AsyncWebCrawler,
-    CrawlerRunConfig,
     CacheMode,
+    CrawlerRunConfig,
     MemoryAdaptiveDispatcher,
     RateLimiter,
 )

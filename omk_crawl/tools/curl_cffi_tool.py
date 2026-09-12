@@ -25,12 +25,13 @@ class CurlCffiTool(BaseTool):
         _, stop = _timer()
         try:
             from curl_cffi import requests as cffi_requests
+            from curl_cffi.requests import ProxySpec
 
-            # Normalize the common `proxy` (str) into curl_cffi's `proxies` dict.
-            proxies = kwargs.get("proxies")
+            # Normalize the common `proxy` (str) into curl_cffi's `proxies` spec.
             proxy = kwargs.get("proxy")
+            proxies: ProxySpec | None = kwargs.get("proxies")
             if proxies is None and proxy:
-                proxies = {"http": proxy, "https": proxy}
+                proxies = ProxySpec(http=str(proxy), https=str(proxy))
 
             resp = cffi_requests.get(
                 url,
@@ -51,7 +52,7 @@ class CurlCffiTool(BaseTool):
                 html=resp.text,
                 tool=self.name,
                 elapsed_ms=stop(),
-                headers=dict(resp.headers),
+                headers={str(k): str(v) for k, v in resp.headers.items() if v is not None},
                 metadata=meta,
             )
         except Exception as exc:

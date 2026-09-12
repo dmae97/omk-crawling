@@ -1,7 +1,7 @@
 # browser-use — LLM 에이전트가 브라우저를 조작
 
 - Repo: https://github.com/browser-use/browser-use · Docs: https://docs.browser-use.com
-- PyPI `browser-use` v0.13.6 · Python ≥3.11 · **MIT**
+- PyPI `browser-use` v0.13.8 · Python ≥3.11 · **MIT**
 
 ## 언제
 

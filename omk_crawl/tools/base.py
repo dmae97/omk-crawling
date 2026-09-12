@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import abc
+from collections.abc import Mapping
+from email.message import Message
 from typing import Any
 
 from omk_crawl.detect import tool_available
@@ -22,6 +24,8 @@ class BaseTool(abc.ABC):
     layer: int = 0  # 0=fetch, 1=crawl, 2=browser, 3=extract, 4=convert, 5=mobile
     needs_browser: bool = False
     needs_llm: bool = False
+    # Used when a shared deadline clamps an adapter's timeout.
+    default_timeout: float = 30.0
     # Which COMMON_KWARGS features this adapter actually implements. Declared so
     # the router can route by capability and callers get explicit unsupported
     # feedback instead of silent no-ops.
@@ -37,7 +41,8 @@ class BaseTool(abc.ABC):
     def unsupported_features(self, kwargs: dict[str, Any]) -> list[str]:
         """Common kwargs the caller passed (non-None) that we do NOT support."""
         return [
-            k for k in COMMON_KWARGS
+            k
+            for k in COMMON_KWARGS
             if k in kwargs and kwargs[k] is not None and not self.supports(k)
         ]
 
@@ -84,9 +89,26 @@ class BaseTool(abc.ABC):
         )
 
     def _error(self, url: str, exc: Exception) -> CrawlResult:
+        response = getattr(exc, "response", None)
+        code = getattr(response, "status_code", None)
+        if code is None:
+            code = getattr(exc, "status_code", getattr(exc, "code", None))
+        if not isinstance(code, int) or isinstance(code, bool) or not 400 <= code <= 599:
+            code = None
+        raw_headers = getattr(response, "headers", None)
+        if raw_headers is None:
+            raw_headers = getattr(exc, "headers", {})
+        headers = (
+            {str(key): str(value) for key, value in raw_headers.items()}
+            if isinstance(raw_headers, (Mapping, Message))
+            else {}
+        )
         return CrawlResult(
             url=url,
             status=CrawlStatus.ERROR,
+            status_code=code,
             tool=self.name,
+            headers=headers,
             error=f"{type(exc).__name__}: {exc}",
+            metadata={"failure_kind": "adapter_exception"},
         )

@@ -16,6 +16,8 @@
 
 import json
 import os
+from contextlib import suppress
+
 from mitmproxy import http
 
 CAPTURE_FILE = os.path.join(os.path.dirname(__file__), "baemin_captured_headers.json")
@@ -87,7 +89,7 @@ def request(flow: http.HTTPFlow):
     auth = flow.request.headers.get("authorization", "")
     if auth and auth not in captured["auth_tokens"]:
         captured["auth_tokens"].append(auth)
-        print(f"[baemin-capture] AUTH TOKEN captured")
+        print("[baemin-capture] AUTH TOKEN captured")
 
     _save()
 
@@ -99,8 +101,7 @@ def response(flow: http.HTTPFlow):
         return
 
     if "review" in url and flow.response.status_code == 200:
-        try:
+        # Non-JSON review body is not worth killing the capture over.
+        with suppress(Exception):
             data = json.loads(flow.response.get_text())
             print(f"[baemin-capture] REVIEW RESPONSE: {json.dumps(data, ensure_ascii=False)[:300]}")
-        except Exception:
-            pass

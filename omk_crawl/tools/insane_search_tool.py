@@ -1,262 +1,216 @@
-"""InsaneSearch — hyper-aggressive single-URL unblocker.
+"""Bounded HTTP profile fallback followed by optional browser rendering.
 
-First-line breaker when everything else fails. Bypasses:
-  - TLS/JA3 fingerprinting (impersonate rotation × 8 profiles)
-  - Cloudflare / Turnstile (real browser fallback)
-  - Akamai / Datadome / Imperva (header trickery)
-  - Rate limiting (token bucket + jitter)
-  - Geo-blocking (configurable proxy)
-
-Strategy: throw everything at the wall until something sticks.
-  1. Raw curl_cffi with Chrome TLS impersonation
-  2. Safari/firefox impersonation fallback
-  3. Spoofed headers (real browser Accept/Referer/Sec-*)
-  4. If all HTTP fails → Playwright stealth browser
+Authentication and server backpressure are terminal responses, not reasons to
+rotate clients. The timeout is shared by all work inside this adapter.
 """
 
 from __future__ import annotations
 
-import random
+import math
 import time
 from typing import Any
 
+from omk_crawl.fingerprint import match_impersonate
+from omk_crawl.pipeline import normalize_result
 from omk_crawl.result import CrawlResult, CrawlStatus
+from omk_crawl.retry_after import retry_after_seconds
+from omk_crawl.routing import is_auth_block
+from omk_crawl.stability import TimeoutBudget
 from omk_crawl.tools.base import BaseTool
 
-# ── Impersonate profiles (sorted by likelihood of bypass) ──
-_IMPERSONATE_PROFILES = [
-    "chrome124",   # Latest Chrome (most sites target this)
+_IMPERSONATE_PROFILES = (
+    "chrome124",
     "chrome120",
     "chrome116",
     "chrome110",
-    "safari17_0",  # Safari gets different treatment sometimes
+    "safari17_0",
     "safari15_5",
     "edge101",
-    "firefox133",  # Firefox sometimes bypasses Chrome-specific blocks
-]
-
-# ── Spoofed header sets (real browser fingerprints) ──
-_CHROME_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;q=0.9,"
-        "image/avif,image/webp,image/apng,*/*;q=0.8"
-    ),
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Cache-Control": "no-cache",
-    "Sec-Ch-Ua": (
-        '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"'
-    ),
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1",
-    "Referer": "https://www.google.com/",
-}
-
-_SAFARI_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-        "Version/17.5 Safari/605.1.15"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-}
-
-_FIREFOX_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) "
-        "Gecko/20100101 Firefox/133.0"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;q=0.9,"
-        "image/avif,image/webp,*/*;q=0.8"
-    ),
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-}
-
-_PROFILE_HEADERS: dict[str, dict[str, str]] = {
-    "chrome": _CHROME_HEADERS,
-    "safari": _SAFARI_HEADERS,
-    "firefox": _FIREFOX_HEADERS,
-    "edge": _CHROME_HEADERS,  # Edge uses Blink, same headers
-}
-
-
-def _profile_family(impersonate: str) -> str:
-    """Extract browser family from impersonate profile name."""
-    if "chrome" in impersonate:
-        return "chrome"
-    if "safari" in impersonate:
-        return "safari"
-    if "firefox" in impersonate:
-        return "firefox"
-    if "edge" in impersonate:
-        return "edge"
-    return "chrome"
+    "firefox133",
+)
 
 
 class InsaneSearchTool(BaseTool):
-    """Hyper-aggressive single-URL fetcher. 8 impersonation profiles + stealth browser."""
-
     name = "insane_search"
     pip_package = "curl_cffi"
-    layer = 0  # fetch layer
-    capabilities: frozenset[str] = frozenset({"timeout", "headers", "proxy"})
+    layer = 0
+    default_timeout = 18.0
+    capabilities = frozenset({"timeout", "headers", "proxy"})
 
     def available(self) -> bool:
-        return True  # Pure Python + curl_cffi, always available
+        from omk_crawl.detect import tool_available
+
+        return tool_available("curl_cffi") or tool_available("playwright")
+
+    def _finish(
+        self, result: CrawlResult, attempts: list[dict[str, Any]], started: float, reason: str
+    ):
+        result.elapsed_ms = (time.monotonic() - started) * 1000
+        result.metadata.update(attempts=attempts, profile_attempts=attempts, adapter_stop=reason)
+        return result
 
     def fetch(self, url: str, **kwargs: Any) -> CrawlResult:
-        """Try every trick to get the URL content.
-
-        Args:
-            timeout: Per-attempt timeout (seconds, default 18).
-            proxy: SOCKS5/HTTP proxy URL.
-            stealth: If True, use Playwright stealth browser as last resort.
-        """
-        timeout: int = int(kwargs.get("timeout", 18))
-        proxy: str | None = kwargs.get("proxy")
-        use_stealth: bool = kwargs.get("stealth", True)
+        """Try HTTP profiles and an optional renderer within one timeout budget."""
+        try:
+            timeout = float(kwargs.get("timeout", self.default_timeout))
+            if not math.isfinite(timeout) or timeout <= 0:
+                timeout = self.default_timeout
+        except (TypeError, ValueError, OverflowError):
+            timeout = self.default_timeout
+        budget = TimeoutBudget(timeout)
+        started = time.monotonic()
         attempts: list[dict[str, Any]] = []
-        t_start = time.monotonic()
+        best = self._missing(url)
+        try:
+            from curl_cffi import requests as cffi
+        except ImportError:
+            cffi = None
+            attempts.append({"strategy": "impersonate", "error": "dependency_missing"})
 
-        # ── Strategy 1: Rotate TLS impersonation profiles ──
-        from curl_cffi import requests as cffi
-
-        shuffled = list(_IMPERSONATE_PROFILES)
-        random.shuffle(shuffled)
-
-        for imp in shuffled:
-            family = _profile_family(imp)
-            headers = dict(_PROFILE_HEADERS.get(family, _CHROME_HEADERS))
-            if kwargs.get("headers"):
-                headers.update(kwargs["headers"])
-
-            try:
-                kw: dict[str, Any] = dict(
-                    headers=headers,
-                    impersonate=imp,
-                    timeout=timeout,
-                    allow_redirects=True,
-                )
-                if proxy:
-                    kw["proxy"] = proxy
-
-                resp = cffi.get(url, **kw)
-
-                block_detected = self._is_blocked(resp.status_code, resp.text)
-                attempts.append({
-                    "profile": imp, "status": resp.status_code,
-                    "len": len(resp.text), "blocked": block_detected,
-                })
-
-                if resp.status_code < 400 and not block_detected:
-                    return CrawlResult(
-                        url=url,
-                        status=CrawlStatus.OK,
-                        status_code=resp.status_code,
-                        tool=self.name,
-                        html=resp.text,
-                        content=resp.text,
-                        elapsed_ms=(time.monotonic() - t_start) * 1000,
-                        metadata={
-                            "strategy": "impersonate",
-                            "profile": imp,
-                            "attempts": attempts,
+        if cffi is not None:
+            for profile in _IMPERSONATE_PROFILES:
+                if budget.expired:
+                    break
+                headers = match_impersonate(profile).headers()
+                headers.update(kwargs.get("headers") or {})
+                try:
+                    response = cffi.get(
+                        url,
+                        **{
+                            "headers": headers,
+                            "impersonate": profile,
+                            "timeout": budget.remaining,
+                            "allow_redirects": True,
+                            "proxy": kwargs.get("proxy"),
                         },
                     )
-            except Exception as exc:
-                attempts.append({"profile": imp, "error": str(exc)[:120]})
-                continue
+                    result = CrawlResult(
+                        url=url,
+                        tool=self.name,
+                        status=CrawlStatus.OK,
+                        status_code=response.status_code,
+                        html=response.text,
+                        headers={str(k): str(v) for k, v in response.headers.items()},
+                        metadata={"strategy": "impersonate", "profile": profile},
+                    )
+                    detection = normalize_result(result)
+                    result.metadata.update(
+                        block_type=detection.block.name, detection=detection.detail
+                    )
+                    attempts.append(
+                        {
+                            "profile": profile,
+                            "status": result.status_code,
+                            "len": len(response.text),
+                            "blocked": result.blocked,
+                        }
+                    )
+                    best = result
+                    if budget.expired:
+                        break
+                    if is_auth_block(detection.block):
+                        return self._finish(result, attempts, started, "auth_required")
+                    if result.ok:
+                        return self._finish(result, attempts, started, "success")
+                    if result.status_code == 429 or retry_after_seconds(result.headers) is not None:
+                        return self._finish(result, attempts, started, "server_backpressure")
+                    if result.status is CrawlStatus.ERROR:
+                        return self._finish(result, attempts, started, "http_error")
+                    if result.status is CrawlStatus.JS_REQUIRED:
+                        break
+                except Exception as error:
+                    attempts.append({"profile": profile, "error": type(error).__name__})
+                    best = CrawlResult(
+                        url=url,
+                        tool=self.name,
+                        status=CrawlStatus.ERROR,
+                        error=f"HTTP adapter raised {type(error).__name__}",
+                        metadata={"failure_kind": "adapter_exception"},
+                    )
 
-        # ── Strategy 2: Playwright stealth browser (last resort) ──
-        if use_stealth:
-            try:
-                from playwright.sync_api import sync_playwright
+        if budget.expired:
+            best.status = CrawlStatus.ERROR
+            best.error = "Adapter deadline exceeded"
+            best.metadata["failure_kind"] = "adapter_exception"
+            return self._finish(best, attempts, started, "deadline_exceeded")
+        if kwargs.get("stealth", True):
+            if kwargs.get("headers"):
+                # Avoid silently dropping custom headers or broadcasting credentials
+                # to third-party browser subresources. Let an explicit renderer handle them.
+                return self._finish(best, attempts, started, "headers_require_renderer")
+            rendered = self._browser_fetch(url, budget, kwargs.get("proxy"))
+            if (
+                rendered.status is not CrawlStatus.TOOL_MISSING
+                or best.status is CrawlStatus.TOOL_MISSING
+            ):
+                best = rendered
+            attempts.append({"strategy": "stealth_browser", "status": rendered.status_code})
+        if budget.expired:
+            best.status = CrawlStatus.ERROR
+            best.error = "Adapter deadline exceeded"
+            best.metadata["failure_kind"] = "adapter_exception"
+            return self._finish(best, attempts, started, "deadline_exceeded")
+        return self._finish(best, attempts, started, "success" if best.ok else "exhausted")
 
-                with sync_playwright() as p:
-                    browser = p.chromium.launch(headless=True)
-                    ctx_kwargs: dict[str, Any] = {
-                        "user_agent": _CHROME_HEADERS["User-Agent"],
-                        "locale": "ko-KR",
-                        "viewport": {"width": 1280, "height": 900},
-                    }
+    def _browser_fetch(self, url: str, budget: TimeoutBudget, proxy: str | None) -> CrawlResult:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return self._missing(url)
+        try:
+            if budget.expired:
+                raise TimeoutError("adapter deadline")
+            with sync_playwright() as playwright:
+                remaining = budget.remaining
+                if remaining <= 0:
+                    raise TimeoutError("adapter deadline")
+                browser = playwright.chromium.launch(headless=True, timeout=remaining * 1000)
+                try:
+                    context_kwargs = match_impersonate("chrome124").browser_context_kwargs()
                     if proxy:
-                        ctx_kwargs["proxy"] = {"server": proxy}
-                    context = browser.new_context(**ctx_kwargs)
+                        context_kwargs["proxy"] = {"server": proxy}
+                    context = browser.new_context(**context_kwargs)
                     page = context.new_page()
-
-                    # Stealth: spoof webdriver detection
                     page.add_init_script("""
-                        Object.defineProperty(navigator, 'webdriver',
-                            {get: () => undefined});
-                        Object.defineProperty(navigator, 'plugins',
-                            {get: () => [1,2,3,4,5]});
-                        Object.defineProperty(navigator, 'languages',
-                            {get: () => ['ko-KR','ko','en-US','en']});
+                        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                        Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+                        Object.defineProperty(navigator, 'languages', {
+                            get: () => ['ko-KR','ko','en-US','en']
+                        });
                         window.chrome = {runtime: {}};
                     """)
-
-                    page.goto(url, wait_until="networkidle",
-                              timeout=timeout * 1000)
-                    page.wait_for_timeout(2000)
-                    html = page.content()
-                    browser.close()
-
-                    return CrawlResult(
+                    remaining = budget.remaining
+                    if remaining <= 0:
+                        raise TimeoutError("adapter deadline")
+                    response = page.goto(url, wait_until="networkidle", timeout=remaining * 1000)
+                    result = CrawlResult(
                         url=url,
-                        status=CrawlStatus.OK,
-                        status_code=200,
                         tool=self.name,
-                        html=html,
-                        content=html,
-                        elapsed_ms=(time.monotonic() - t_start) * 1000,
-                        metadata={
-                            "strategy": "stealth_browser",
-                            "attempts": attempts,
-                        },
+                        status=CrawlStatus.OK,
+                        status_code=response.status if response is not None else None,
+                        html=page.content(),
+                        headers=response.all_headers() if response is not None else {},
+                        metadata={"strategy": "stealth_browser"},
                     )
-            except ImportError:
-                pass
-            except Exception as exc:
-                attempts.append({"strategy": "stealth_browser", "error": str(exc)[:120]})
-
-        # ── Total failure ──
-        return CrawlResult(
-            url=url,
-            status=CrawlStatus.BLOCKED,
-            tool=self.name,
-            error=f"All 8 profiles + stealth browser failed. Last attempts: {attempts[-3:]}",
-            elapsed_ms=(time.monotonic() - t_start) * 1000,
-            metadata={"attempts": attempts},
-        )
+                    detection = normalize_result(result)
+                    result.metadata.update(
+                        block_type=detection.block.name, detection=detection.detail
+                    )
+                    return result
+                finally:
+                    browser.close()
+        except Exception as error:
+            return CrawlResult(
+                url=url,
+                tool=self.name,
+                status=CrawlStatus.ERROR,
+                error=f"Browser adapter raised {type(error).__name__}",
+                metadata={"failure_kind": "adapter_exception"},
+            )
 
     @staticmethod
     def _is_blocked(status_code: int, html: str) -> bool:
-        """Detect if response is a block page despite 2xx status."""
-        lower = html[:2000].lower()
-        markers = (
-            "cf-browser-verification", "cf_chl_opt", "turnstile",
-            "challenge-platform", "are you a robot", "captcha",
-            "access denied", "unusual traffic", "blocked",
-            "ddos-guard", "datadome", "perimeterx",
-        )
-        if status_code == 403:
-            return True
-        if status_code == 503 and any(m in lower for m in markers[:4]):
-            return True
-        if any(m in lower for m in markers):
-            return True
-        return False
+        """Compatibility predicate using the engine's shared content validator."""
+        result = CrawlResult(url="", status=CrawlStatus.OK, status_code=status_code, html=html)
+        normalize_result(result)
+        return not result.ok

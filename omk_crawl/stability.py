@@ -11,9 +11,10 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast, get_args
 
 T = TypeVar("T")
 
@@ -22,15 +23,18 @@ T = TypeVar("T")
 # Structured logger
 # ─────────────────────────────────────────────
 
+
 def get_logger(name: str = "omk_crawl", level: int = logging.INFO) -> logging.Logger:
     """Structured logger with consistent format across the stack."""
     logger = logging.getLogger(name)
     if not logger.handlers:
         h = logging.StreamHandler(sys.stderr)
-        h.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
-            datefmt="%H:%M:%S",
-        ))
+        h.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
+                datefmt="%H:%M:%S",
+            )
+        )
         logger.addHandler(h)
     logger.setLevel(level)
     return logger
@@ -43,9 +47,10 @@ log = get_logger()
 # Circuit breaker
 # ─────────────────────────────────────────────
 
+
 class CircuitState(Enum):
-    CLOSED = "closed"      # normal — requests flow
-    OPEN = "open"          # tripped — requests fail fast
+    CLOSED = "closed"  # normal — requests flow
+    OPEN = "open"  # tripped — requests fail fast
     HALF_OPEN = "half_open"  # probing — one trial request allowed
 
 
@@ -132,6 +137,7 @@ class BreakerRegistry:
 # Session manager (connection reuse + cookies)
 # ─────────────────────────────────────────────
 
+
 class SessionManager:
     """Manages curl_cffi sessions for connection reuse and cookie persistence.
 
@@ -148,17 +154,21 @@ class SessionManager:
         with self._lock:
             if self._session is None:
                 from curl_cffi import requests as cffi
-                self._session = cffi.Session(impersonate=self.impersonate)
+                from curl_cffi.requests.impersonate import BrowserTypeLiteral
+
+                if self.impersonate not in get_args(BrowserTypeLiteral):
+                    raise ValueError("Unsupported browser impersonation profile")
+                profile = cast(BrowserTypeLiteral, self.impersonate)
+                self._session = cffi.Session(impersonate=profile)
             return self._session
 
     def reset(self) -> None:
         """Close and recreate the session (e.g. after auth change)."""
         with self._lock:
             if self._session is not None:
-                try:
+                # Close is best-effort; the session is dropped either way.
+                with suppress(Exception):
                     self._session.close()
-                except Exception:
-                    pass
             self._session = None
 
     def set_cookies(self, cookies: dict[str, str]) -> None:
@@ -175,12 +185,13 @@ class SessionManager:
 # Timeout budget
 # ─────────────────────────────────────────────
 
+
 @dataclass
 class TimeoutBudget:
     """Tracks remaining time across a multi-step operation."""
 
     total: float
-    _start: float = field(default_factory=time.monotonic, init=False)
+    _start: float = field(default_factory=lambda: time.monotonic(), init=False)
 
     @property
     def remaining(self) -> float:

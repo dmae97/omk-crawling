@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Smart crawling toolbox — web auto-escalation + Android/iOS surfaces.</strong><br/>
-  Fetch → Crawl → Browser → Extract → Convert → Mobile. Auto-escalates until it works.
+  Fetch → Crawl → Browser → Extract → Convert → Mobile. Bounded escalation with explicit stop reasons.
 </p>
 
 <p align="center">
@@ -90,43 +90,49 @@ omk-crawl 'android://SERIAL/packages'
 
 See [references/tools/mobile.md](references/tools/mobile.md).
 
+## Offline web/app captures (HAR)
+
+Inspect a HAR exported from a browser or an authorized app debugging session. No
+browser, device, credentials, extra dependency, or network replay is required.
+
+```bash
+omk-crawl capture.har --json -o endpoints.json
+omk-crawl capture.har --json --har-bodies -o responses.json
+```
+
+The default output omits headers, cookies, request bodies, URL credentials, query
+strings, fragments, and response bodies. `--har-bodies` opts into JSON response
+bodies; URL paths and these bodies may contain sensitive data. Review before sharing.
+See [HAR limits and Python API](references/tools/har.md).
+
 ## Why omk-crawling?
 
-Web crawling never ends with one tool. A site might block your TLS fingerprint, require JS rendering,
-hide behind Cloudflare, or need a full LLM agent to navigate a login flow. **omk-crawling routes
-across 6 adapters automatically** (4 in the escalation chain), escalating from the lightest to the heaviest until the data is yours.
+Web crawling never ends with one tool. A site might block your TLS fingerprint, require JS rendering, hide behind Cloudflare, or need a full LLM agent. **omk-crawling routes through an eight-stage web escalation chain**, from the lightest adapter to the heaviest — with a breakthrough layer (v2.12) that keeps every layer of your fingerprint telling the same story.
 
+```text
+insane_search → curl_cffi → crawl4ai → scrapling → camoufox → patchright → nodriver → browser-use
 ```
-curl_cffi (0ms browser) → crawl4ai (render) → scrapling (stealth) → browser-use (LLM agent)
 
+> **v2.12**: breakthrough layer — cross-layer fingerprint coherence (`fingerprint.py`), seeded human behavior (`behavior.py`), session warm-up & clearance reuse (`warmup.py`, `warm_crawl`), and three anti-detect browsers: **camoufox** (C++-level FP injection), **nodriver** (CDP-native Chrome, kills DataDome/Kasada/PerimeterX), **patchright** (patched Playwright). Grounded in arXiv:2406.07647, 2606.30119, 2602.09606. See `references/breakthrough.md`.
 > **v2.6.0**: `insane_search` now leads the chain — 8 TLS profiles + stealth browser.
-```
 
 ---
 
 ## Architecture
 
+```text
+┌───────────────────────────────────────────┐
+│                SmartRouter                │
+│     recall → route → validate → learn     │
+└─────────────────────┬─────────────────────┘
+                      ▼
+  ⓪ insane_search → ① curl_cffi → ② crawl4ai → ③ scrapling
+       → ④ camoufox → ⑤ patchright → ⑥ nodriver → ⑦ browser-use
+                      ▼
+               CrawlResult (unified)
 ```
-                    ┌─────────────────────────────────────────┐
-                    │            SmartRouter                   │
-                    │  detect → route → escalate → result     │
-                    └──────────┬──────────────────────────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          ▼                    ▼                    ▼
-   ① curl_cffi          ② crawl4ai          ③ scrapling
-   TLS/JA3 spoof        browser render      stealth browser
-   0ms browser           + Markdown          + anti-bot bypass
-          │                    │                    │
-          └────────────────────┼────────────────────┘
-                               ▼ (still blocked?)
-                        ④ browser-use
-                        LLM agent drives browser
-                               │
-                               ▼
-                        CrawlResult (unified)
-                        .markdown .html .extracted
-```
+
+Automatic routing validates every apparent success before learning from it: empty or script-only shells escalate to a renderer, while authentication walls stop without bypass attempts. It remembers per-domain tool outcomes and promotes tools that worked before. An explicit `tools=[...]` list always keeps its order. State is stored at `~/.cache/omk-crawl/site-memory.json` with `0600` permissions; set `OMK_CRAWL_SITE_MEMORY` to choose another path.
 
 ---
 
@@ -149,6 +155,9 @@ pip install git+https://github.com/dmae97/omk-crawling.git              # core (
 pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[curl]"        # + curl_cffi (TLS fingerprint)
 pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[crawl4ai]"    # + crawl4ai (browser + markdown)
 pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[scrapling]"   # + scrapling (stealth)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[camoufox]"    # + camoufox (anti-detect Firefox)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[nodriver]"    # + nodriver (CDP-native Chrome)
+pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[patchright]"  # + patchright (patched Playwright)
 pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[browser]"     # + browser-use (LLM agent)
 pip install "git+https://github.com/dmae97/omk-crawling.git#egg=omk-crawl[all]"         # everything
 ```
@@ -190,6 +199,50 @@ r = crawl("https://protected-site.com", verbose=True)
 #   [omk-crawl]   ✓ crawl4ai succeeded (1204ms)
 ```
 
+### Unified engine controls
+
+CLI, `crawl()`, `crawl_async()`, and `SmartRouter` share target routing and execution policy.
+Local HAR/APK/IPA/document paths and native URIs go to their own adapters, not the web chain.
+
+```bash
+omk-crawl https://example.com --json --total-timeout 30 --max-fetches 4
+omk-crawl https://example.com --no-browser --diagnose
+```
+
+```python
+from omk_crawl import SmartRouter
+
+router = SmartRouter(total_timeout=30, max_fetches=4, allow_browser=False)
+result = router.crawl("https://example.com", timeout=10)
+print(result.metadata["stop_reason"])
+print(result.metadata["execution"]["trace"])
+```
+
+Defaults: up to 8 adapters, 1 retry each, and a shared 120-second cooperative deadline.
+Requested headers, cookies, proxy, session, and timeout capabilities are checked before
+selecting an adapter. Unsupported requests appear in `execution.skipped`, without values.
+LLM adapters require `--allow-llm` / `allow_llm=True`; they are excluded by default.
+
+The router retries transport failures and HTTP `408`, `429`, `502`, `503`, and `504`
+for `GET`, `HEAD`, and `OPTIONS`. Backoff is capped at `max_retry_delay`; a valid
+`Retry-After` (seconds or HTTP date) is a minimum wait. If it exceeds that cap, the
+router stops instead of retrying early. Authentication, exhausted rate limits,
+server-directed backpressure, and failed unsafe methods do not switch adapters.
+
+`metadata.execution` contains per-crawl calls, skips, and timing. `attempts` counts
+selected adapters; `execution.fetches` includes their retries. These are adapter calls,
+not a count of every HTTP request or browser subresource. History still accumulates
+across calls. `fetch_limit` and `deadline_exceeded` distinguish budget stops from
+adapter errors or unavailable dependencies.
+
+Async domain waits yield to the event loop; robots.txt I/O runs in a worker thread.
+`crawl_async()` accepts the same `verbose`, `respect_robots`, and `min_delay` controls
+as `crawl()`. Cancelling a pending retry prevents its next request; an already-running
+synchronous adapter or robots check cannot be forcibly stopped by asyncio. Late results
+are not reported as success, but this is not a hard process-kill deadline.
+
+Target rules, internal adapter bounds, and all stop reasons: [engine contract](references/engine.md).
+
 ### Pipeline
 
 ```python
@@ -222,7 +275,7 @@ asyncio.run(main())
 
 ## Tool Router
 
-**7 runtime adapters** — 5 core in the auto-escalation chain (insane_search → curl_cffi → crawl4ai → scrapling → browser-use) plus 2 auxiliary (autoscraper, markitdown). The skill *catalog* references 10 tools overall; the remainder (scrapy, crawlee, scrcpy, curl-impersonate) are documented in [`references/`](references/) for manual use, not wired into the router.
+The web auto-escalation chain is `insane_search → curl_cffi → crawl4ai → scrapling → browser-use`. Additional target-specific, extraction, conversion, and mobile adapters are available through `--tool`; see [`references/`](references/).
 
 | Need | Tool | Layer | Status |
 |------|------|-------|
@@ -253,7 +306,7 @@ Live run, polite subset (scrape-friendly sites only, `robots.txt` respected,
 ≥1 s between requests), zero-dep install (curl_cffi):
 
 | site | category | ok@1 | ok@final | p50 ms | p95 ms | KB | tool path | cost |
-|------|----------|:----:|:--------:|-------:|-------:|---:|-----------|:----:|
+| ------ | ---------- | :----: | :--------: | -------: | -------: | ---: | ----------- | :----: |
 | example.com | static | ✓ | ✓ | 661 | 917 | 0 | curl_cffi | 0 |
 | httpbin-html | static | ✓ | ✓ | 1318 | 1542 | 3 | curl_cffi | 0 |
 | books.toscrape | static | ✓ | ✓ | 1577 | 1944 | 10 | curl_cffi | 0 |
@@ -282,16 +335,23 @@ Results are written to `benchmarks/latest.json`.
 ```
 omk_crawl/              # Python package
   __init__.py           # Public API: crawl(), CrawlResult
-  router.py             # SmartRouter — auto-detect + escalate
+  router.py             # SmartRouter configuration and retries
+  route_engine.py       # Shared plan, dry-run, sync/async routing
+  execution.py          # Per-crawl budgets, capability selection, trace
+  request_runner.py     # Adapter invocation and budgeted retries
+  targets.py            # Web/native/file target classification
+  routing.py            # Detection routes + per-site tool memory
   detect.py             # Block detection (TLS, CF, JS, WAF)
   result.py             # Unified CrawlResult dataclass
+  retry_after.py        # HTTP Retry-After parsing
+  har.py                # Bounded offline web/app capture inspection
   pipeline.py           # Composable fetch → extract → convert
   cli.py                # CLI entry point (omk-crawl)
-  tools/                # Tool adapters (6 adapters)
+  tools/                # Tool adapters
 tests/                  # pytest suite
-references/             # Per-tool reference docs (14 files)
-examples/               # Runnable examples (7 files)
-scripts/                # check-versions.sh
+references/             # Per-tool reference docs
+examples/               # Runnable examples
+scripts/                # Project checks and benchmarks
 assets/                 # Hero image
 SKILL.md                # OMK skill definition
 NOTICE.md               # Licenses + shoutouts to all 11 projects
@@ -321,11 +381,13 @@ or `DO_NOT_TRACK=1`.
 ## Development
 
 ```bash
-pip install -e ".[all,dev]"
+pip install -e ".[curl,dev]"       # CI-equivalent test dependencies
 pytest tests/ -v                    # run tests
 bash scripts/check-versions.sh      # upstream version drift
 ruff check omk_crawl/               # lint
 ```
+
+Recovery/HAR test results and limitations: [verification report](references/verification-recovery-har.md).
 
 ---
 
@@ -334,7 +396,7 @@ ruff check omk_crawl/               # lint
 Built on the shoulders of 11 amazing projects. See [NOTICE.md](NOTICE.md) for full attribution.
 
 | # | Project | License | What it does |
-|---|---------|---------|--------------|
+| --- | --------- | --------- | -------------- |
 | 1 | [crawl4ai](https://github.com/unclecode/crawl4ai) | Apache-2.0 | LLM-first web crawler |
 | 2 | [scrapy](https://github.com/scrapy/scrapy) | BSD-3-Clause | Mature crawl framework |
 | 3 | [crawlee](https://github.com/apify/crawlee) | Apache-2.0 | Production crawl infra |
@@ -362,8 +424,8 @@ This toolbox includes TLS fingerprint impersonation and anti-bot bypass capabili
 - **Only crawl data you're authorized to access.** Bypassing authentication or accessing protected data without permission may violate laws (CFAA, GDPR, etc.).
 - These tools are intended for legitimate research, development, and data extraction within legal boundaries.
 
-> This product includes software developed by UncleCode (https://x.com/unclecode)
-> as part of the Crawl4AI project (https://github.com/unclecode/crawl4ai).
+> This product includes software developed by UncleCode (<https://x.com/unclecode>)
+> as part of the Crawl4AI project (<https://github.com/unclecode/crawl4ai>).
 
 ---
 

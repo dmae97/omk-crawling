@@ -1,0 +1,203 @@
+{
+  "benchmark": "evasion",
+  "version": "2.14.0",
+  "generated_at": "2026-09-17T18:11:48+0900",
+  "python": "3.12.3",
+  "mode": "offline",
+  "runs": 40,
+  "checks": [
+    {
+      "key": "header_coherence",
+      "weight": 3,
+      "description": "UA vs Client Hints vs platform vs TLS family"
+    },
+    {
+      "key": "tls_family",
+      "weight": 3,
+      "description": "GREASE/ALPN/TLS1.3 vs the claimed browser family"
+    },
+    {
+      "key": "tcp_os",
+      "weight": 2,
+      "description": "SYN signature vs the OS the UA claims"
+    },
+    {
+      "key": "js_surface",
+      "weight": 3,
+      "description": "navigator/screen/WebGL vs the claimed identity"
+    },
+    {
+      "key": "cdp_surface",
+      "weight": 3,
+      "description": "surviving automation tells"
+    },
+    {
+      "key": "behavior_cadence",
+      "weight": 2,
+      "description": "constant cadence and unthrottled bursts"
+    },
+    {
+      "key": "challenge_policy",
+      "weight": 1,
+      "description": "interactive challenges refused rather than faked"
+    }
+  ],
+  "strategies": [
+    {
+      "strategy": "stock",
+      "score": 0.6429,
+      "detected": [
+        "tls_family",
+        "behavior_cadence"
+      ],
+      "passed": [
+        "header_coherence",
+        "tcp_os",
+        "cdp_surface",
+        "challenge_policy"
+      ],
+      "unscored": [
+        "js_surface"
+      ],
+      "failures_by_check": {
+        "tls_family": [
+          "UA claims chrome but hello carries no GREASE (non-Chromium stack?)",
+          "hello offers no ALPN — real browsers negotiate h2",
+          "hello does not offer TLS 1.3 — no current browser omits it",
+          "Chrome-family UA without a TLS 1.3 cipher suite in the offer"
+        ],
+        "behavior_cadence": [
+          "inter-request delays include a zero gap (unthrottled burst)"
+        ]
+      }
+    },
+    {
+      "strategy": "naive_stealth",
+      "score": 0.0588,
+      "detected": [
+        "header_coherence",
+        "tls_family",
+        "tcp_os",
+        "js_surface",
+        "cdp_surface",
+        "behavior_cadence"
+      ],
+      "passed": [
+        "challenge_policy"
+      ],
+      "unscored": [],
+      "failures_by_check": {
+        "header_coherence": [
+          "impersonate firefox133 (firefox) != UA family chrome"
+        ],
+        "tls_family": [
+          "UA claims chrome but hello carries no GREASE (non-Chromium stack?)"
+        ],
+        "tcp_os": [
+          "TCP stack is Linux but the UA claims Windows",
+          "TTL 64 is not Windows-like (128)"
+        ],
+        "js_surface": [
+          "navigator.platform 'Linux x86_64' != UA platform 'Windows' (expected 'Win32')",
+          "Intl timeZone 'UTC' != profile 'Asia/Seoul'",
+          "navigator.languages[0] 'en-US' != locale 'ko-KR'",
+          "screen [1280, 720] is smaller than viewport [1920, 1080]",
+          "WebGL renderer 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)' is not plausible for Windows (expected one of ['ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)'])"
+        ],
+        "cdp_surface": [
+          "webdriver (high): W3C WebDriver flag; present in every non-patched automation browser.",
+          "plugins_empty (low): Chrome always ships PDF viewer plugins; an empty list is a headless tell.",
+          "chrome_runtime_missing (low): window.chrome exists on every real Chrome page; its absence is a strong headless tell."
+        ],
+        "behavior_cadence": [
+          "inter-request delays vary by only 0.000 (cv) — a metronome cadence is a bot tell",
+          "think times vary by only 0.000 (cv) — a metronome cadence is a bot tell"
+        ]
+      }
+    },
+    {
+      "strategy": "omk_evasion",
+      "score": 1.0,
+      "detected": [],
+      "passed": [
+        "header_coherence",
+        "tls_family",
+        "tcp_os",
+        "js_surface",
+        "cdp_surface",
+        "behavior_cadence",
+        "challenge_policy"
+      ],
+      "unscored": [],
+      "failures_by_check": {}
+    }
+  ],
+  "ranking": [
+    "omk_evasion",
+    "stock",
+    "naive_stealth"
+  ],
+  "plan_cost": {
+    "p50_ms": 0.031,
+    "p95_ms": 0.0651,
+    "max_ms": 0.0724,
+    "samples": 36
+  },
+  "artifacts": {
+    "init_script_bytes": 9218,
+    "patch_fragments": 7,
+    "cdp_tells_covered": 12,
+    "cdp_tells_driver_fixed": 3
+  },
+  "coherence": {
+    "self_check_passed": 12,
+    "sites": 12
+  },
+  "determinism": {
+    "all_identical": true,
+    "detail": {
+      "https://example.com": {
+        "script_identical": true,
+        "seed_identical": true,
+        "profile_identical": true,
+        "ja3_identical": true
+      },
+      "https://news.ycombinator.com": {
+        "script_identical": true,
+        "seed_identical": true,
+        "profile_identical": true,
+        "ja3_identical": true
+      },
+      "https://en.wikipedia.org": {
+        "script_identical": true,
+        "seed_identical": true,
+        "profile_identical": true,
+        "ja3_identical": true
+      },
+      "https://github.com": {
+        "script_identical": true,
+        "seed_identical": true,
+        "profile_identical": true,
+        "ja3_identical": true
+      },
+      "https://www.bbc.co.uk": {
+        "script_identical": true,
+        "seed_identical": true,
+        "profile_identical": true,
+        "ja3_identical": true
+      }
+    }
+  },
+  "fleet_diversity": {
+    "sites": 12,
+    "distinct_profiles": 5,
+    "distinct_tcp_stacks": 3,
+    "distinct_ja3": 3,
+    "distinct_init_scripts": 12
+  },
+  "findings": {
+    "coherent_beats_naive_by": 0.9412,
+    "naive_is_worse_than_stock": true,
+    "omk_evasion_is_clean": true
+  }
+}

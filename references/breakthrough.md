@@ -256,3 +256,17 @@ evasion_score(evasion_surface("https://example.com"))          # offline score
 That `naive_stealth` scores *worse* than `stock` is the claim of arXiv:2606.30119,
 and this benchmark shows it as a measurement rather than a restatement. Plan
 construction costs 0.02 ms at p50.
+
+**Claim boundary.** The detector, the evasion plan and this benchmark share one
+author, so the ranking is a consistency check within one design, not independent
+evidence: `latest.json` records `detector_is_independent_oracle: false` and
+`is_real_vendor_detection_rate: false`. Only a real vendor's decision on a real
+request would confirm the ordering, and nothing here is sent to a protected site.
+
+**Also not verified at this revision.** Non-Linux kernel behaviour (a stub socket
+simulates the platform branches; a `platform` CI job has been added and has not run).
+That a SYN built from the emitted option bytes produces the intended passive
+fingerprint (the bytes round-trip, but raw sockets need privileges this environment
+lacks, so no packet was sent). The solver transport against a commercial provider
+(verified against a local server instead). Full table in
+`specs/003-deep-evasion-layers/spec.md`.

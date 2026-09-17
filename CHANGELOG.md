@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.14.1] — 2026-09-17
+
+### Added
+
+- "수집물 독성 점검" section: scan crawled HTML/Markdown for hidden instruction
+  carriers (zero-width, HTML comments, alt text, metadata, off-screen CSS, hidden
+  fields) with `v9/redteam/agentic-surface.mjs` before feeding a model or agent
+  context; `measureCarrierDetection()` reproduces the fixture-corpus recall/FPR.
+
 ## [2.14.0] — 2026-09-17
 
 Deep evasion layers: the four surfaces v2.12 left unmanaged (below TLS, above the
@@ -52,7 +61,43 @@ scores **0.643** — glued-on browser headers over a non-browser stack are *more
 detectable than no pretence at all. The coherent plan scores **1.000**.
 - Plan construction costs ~0.02 ms (p50), so per-site identity is effectively free.
 
+### Verification boundaries
+
+Recorded so no reader can quote a stronger claim than the evidence supports. The full
+table is in `specs/003-deep-evasion-layers/spec.md`.
+
+- **Not verified:** non-Linux kernel behaviour. The platform branches are exercised by a
+  stub socket, which simulates a platform rather than being one. A `platform` CI job
+  (ubuntu / windows / macos) was added in this change and has not run yet.
+- **Not verified:** that a SYN built from the emitted option bytes produces the intended
+  passive fingerprint. Bytes and payload values round-trip and fit the 40-byte header,
+  but opening a raw socket needs privileges this environment lacks, so no packet was
+  built or sent.
+- **Not verified end to end:** the CAPTCHA solver transport against a commercial
+  provider. It is verified against a local server, including four failure shapes and the
+  exact bytes sent; no provider has been contacted.
+- **Weaker than it reads:** the benchmark ranking is a consistency check, not
+  independent evidence — the detector, the plan and the benchmark share one author.
+  `benchmarks/evasion/latest.json` carries a `claim_boundary` field saying so.
+- **Verified:** TLS cipher lists match the wire entry for entry and extension sets match
+  for three families (extension order is deliberately not compared); CDP leaks clear to
+  zero in a real Chromium with native-looking patches; Python 3.10 runs the offline
+  suite.
+
 ### Fixed
+
+- Two further defects found by strengthening verification rather than by inspection:
+  `sack_ok` and `window` were in no accounting bucket and so went unaccounted for, and
+  the Windows stacks declared `timestamps=True` while their own option order carried no
+  timestamps option — a contradiction that would have been emitted verbatim.
+  `audit_tcp` now checks a stack against its own option order, and
+  `decode_option_values` verifies payloads rather than only option kinds.
+- The TLS model was reconciled against real handshakes and corrected: the Firefox and
+  Safari cipher lists were wrong (15 vs 17 and 17 vs 20, plus the wrong CBC pair), and
+  the extension sets were missing ECH, ALPS, delegated credentials and record size
+  limit. All three families now match the wire exactly.
+
+### Fixed (earlier)
 
 - Three defects found by execution rather than inspection, each now covered by a
 regression test: two tells sharing one patch fragment emitted it twice and the duplicate

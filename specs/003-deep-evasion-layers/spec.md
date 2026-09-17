@@ -165,3 +165,25 @@ agreement is a property that can be derived and verified.
 - Wire-capture (tcpdump/BPF) JA3 verification. Auditing is model-based; the real
   handshake remains `curl_cffi`'s.
 - Browser engine (C++) level patches — that is camoufox's role.
+
+## Verification boundaries
+
+An adversarial audit of this work's own claims produced the following. Each line
+states what is *not* established, so no reader can quote a stronger claim than the
+evidence supports. These are recorded rather than fixed where fixing them would
+require an environment or an account that does not exist here.
+
+| Claim | Status | What remains open |
+| ------- | -------- | ------------------- |
+| TCP stack emulation | Verified on Linux | Only the fields `setsockopt` controls are applied. Kernel-owned fields are reported, never set. `apply_to_socket` was exercised on a real Linux socket; no other kernel was. |
+| Platform variance | **Not verified** | The non-Linux branches are exercised by a stub socket, which is a simulation of a platform, not a platform. The real kernels are covered by the `platform` CI job added in this change — which has not run yet. |
+| TCP option specification emittable | Partly verified | The option bytes and their payload values (MSS, window scale, SACK, timestamps) round-trip and fit the 40-byte header. That a packet built from them produces the intended passive fingerprint is untested: opening a raw socket requires privileges the development environment does not have, so no SYN was ever built or sent. |
+| CAPTCHA solver path | **Not verified end to end** | The transport is verified against a local server, including four distinct failure shapes and the exact bytes sent. No commercial provider has ever been contacted, and none will be without an operator-supplied account. |
+| TLS/JA3 model vs wire | Verified | Cipher lists match entry for entry and extension *sets* match, for three families. Extension *order* is deliberately not compared (Chromium randomises it) and the model stores extensions sorted, so the model's JA3 identifies the model rather than reproducing an observation. |
+| CDP patching in a real browser | Verified for this registry | Five leaks cleared to zero on Chromium 148, patched functions stay native, no helper is attached to `window`, and canvas noise is seed-stable. Only the tells in `CDP_TELLS` were probed, on `about:blank`, with no vendor's private detector involved. |
+| Benchmark ranking | Consistency check only | The detector, the evasion plan and the benchmark share one author, so the ranking is not independent evidence. `benchmarks/evasion/latest.json` records this in `claim_boundary`. Only a real vendor's decision on a real request would confirm the ordering. |
+| Python 3.10 compatibility | Verified | `compileall` plus the full offline suite pass on 3.10.20. Three real-browser tests skip there because Playwright is absent from the isolated environment. |
+
+Stated plainly: **claims that nothing material remains unverified would be false.** The
+platform, raw-socket, and commercial-solver rows above are open, and the benchmark row
+is weaker than its headline number suggests.

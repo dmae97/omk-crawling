@@ -184,6 +184,22 @@ def run(runs: int = 40, sites: tuple[str, ...] = SITES) -> dict[str, Any]:
         "naive_is_worse_than_stock": by_name["naive_stealth"] < by_name["stock"],
         "omk_evasion_is_clean": by_name["omk_evasion"] == 1.0,
     }
+    # Stated the way AdaptOrch states its own orchestration value: a result from a
+    # local model is not a correctness proof. The detector, the evasion plan and
+    # this benchmark share one author, so the ranking is a *consistency check*
+    # within one design, not independent evidence about what a real vendor would
+    # decide. Recording that here keeps the artifact from being quoted as if it
+    # were a measured detection rate.
+    report["claim_boundary"] = {
+        "detector_is_independent_oracle": False,
+        "is_real_vendor_detection_rate": False,
+        "measured_against": "offline mock detector (omk_crawl.verify)",
+        "note": (
+            "Only a real anti-bot vendor's decision on a real request would confirm "
+            "that the ordering holds in production. Nothing here was sent to a "
+            "protected site."
+        ),
+    }
     return report
 
 
@@ -234,6 +250,13 @@ def _render(report: dict[str, Any]) -> str:
         f"{findings['naive_is_worse_than_stock']}"
     )
     lines.append(f"  coherent plan sweeps every check: {findings['omk_evasion_is_clean']}")
+    boundary = report["claim_boundary"]
+    lines.append("")
+    lines.append(
+        f"claim boundary     independent oracle: {boundary['detector_is_independent_oracle']} | "
+        f"real vendor detection rate: {boundary['is_real_vendor_detection_rate']}"
+    )
+    lines.append(f"                   {boundary['note']}")
     lines.append("")
     lines.append("per-check failures by strategy")
     for result in report["strategies"]:

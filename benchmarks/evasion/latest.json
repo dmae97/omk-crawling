@@ -1,7 +1,7 @@
 {
   "benchmark": "evasion",
   "version": "2.14.0",
-  "generated_at": "2026-09-17T18:11:48+0900",
+  "generated_at": "2026-09-17T18:28:43+0900",
   "python": "3.12.3",
   "mode": "offline",
   "runs": 40,
@@ -138,9 +138,9 @@
     "naive_stealth"
   ],
   "plan_cost": {
-    "p50_ms": 0.031,
-    "p95_ms": 0.0651,
-    "max_ms": 0.0724,
+    "p50_ms": 0.0318,
+    "p95_ms": 0.0697,
+    "max_ms": 0.0866,
     "samples": 36
   },
   "artifacts": {
@@ -199,5 +199,11 @@
     "coherent_beats_naive_by": 0.9412,
     "naive_is_worse_than_stock": true,
     "omk_evasion_is_clean": true
+  },
+  "claim_boundary": {
+    "detector_is_independent_oracle": false,
+    "is_real_vendor_detection_rate": false,
+    "measured_against": "offline mock detector (omk_crawl.verify)",
+    "note": "Only a real anti-bot vendor's decision on a real request would confirm that the ordering holds in production. Nothing here was sent to a protected site."
   }
 }

@@ -22,6 +22,22 @@ class CurlCffiTool(BaseTool):
     def fetch(self, url: str, **kwargs: Any) -> CrawlResult:
         if not self.available():
             return self._missing(url)
+        # `evade=True` opts into the full six-layer identity: the TLS target and
+        # the header set are taken from the same plan, and the result carries the
+        # cross-layer audit. Off by default so existing callers see exactly the
+        # behaviour they had before (the router turns it on for stealth routes).
+        plan = None
+        if kwargs.get("evade"):
+            from omk_crawl.evasion import plan_for
+
+            plan = plan_for(url)
+        impersonate = kwargs.get("impersonate") or (
+            plan.profile.impersonate if plan else self.impersonate
+        )
+        headers = kwargs.get("headers")
+        if headers is None and plan is not None:
+            headers = plan.headers()
+
         _, stop = _timer()
         try:
             from curl_cffi import requests as cffi_requests
@@ -35,15 +51,26 @@ class CurlCffiTool(BaseTool):
 
             resp = cffi_requests.get(
                 url,
-                impersonate=kwargs.get("impersonate", self.impersonate),
+                impersonate=impersonate,
                 timeout=kwargs.get("timeout", 30),
                 proxies=proxies,
-                headers=kwargs.get("headers"),
+                headers=headers,
                 cookies=kwargs.get("cookies"),
             )
             det = detect_block(resp.text, resp.status_code)
             status = detection_to_status(det)
-            meta = {"impersonate": self.impersonate, "detection": det.detail}
+            meta = {"impersonate": impersonate, "detection": det.detail}
+            if plan is not None:
+                meta["evasion"] = plan.as_metadata()
+                # Audit the headers actually sent against the plan's TLS target: a
+                # 403 that comes back while this list is non-empty is a cross-layer
+                # contradiction, not a mystery. curl_cffi versions differ in how
+                # much of the request they expose, so fall back to the intended
+                # header set rather than failing the fetch over diagnostics.
+                sent = getattr(getattr(resp, "request", None), "headers", None)
+                meta["tls_coherence"] = plan.profile.coherence_issues(
+                    dict(sent) if sent else plan.headers()
+                )
             meta.update(self.contract_metadata(kwargs))
             return CrawlResult(
                 url=url,

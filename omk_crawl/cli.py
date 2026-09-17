@@ -7,6 +7,8 @@ Usage:
     omk-crawl https://example.com --json             # JSON output
     omk-crawl https://example.com -v                 # verbose escalation
     omk-crawl --diagnose https://example.com         # dry-run: what would we try?
+    omk-crawl https://example.com --evasion          # six-layer identity + self-check
+    omk-crawl https://example.com --evasion --json   # the same, machine-readable
     omk-crawl --tools                                # list installed tools
     omk-crawl report.pdf                             # file → markdown (markitdown)
     omk-crawl capture.har --json                     # offline web/app API inventory
@@ -62,6 +64,44 @@ def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None =
         print(f"Saved {len(text)} chars → {output}")
     else:
         print(text)
+
+
+def _print_evasion(target: str, *, as_json: bool) -> int:
+    """Show the six-layer plan, its coherence audit, and the offline score.
+
+    This is the operator's self-check: everything here is computed locally and
+    deterministically, so a misconfiguration is visible before a real site sees
+    it.
+    """
+    from omk_crawl.evasion import plan_for
+    from omk_crawl.verify import evasion_surface, score
+
+    plan = plan_for(target)
+    verdict = score(evasion_surface(target))
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "plan": plan.as_metadata(),
+                    "coherence": plan.coherence_report().to_dict(),
+                    "verdict": verdict.to_dict(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
+    print(plan.describe())
+    print()
+    print(f"mock detector   score={verdict.score:.3f}")
+    print(f"  judged        {', '.join(verdict.passed + verdict.detected) or 'none'}")
+    if verdict.unscored:
+        print(f"  unscored      {', '.join(verdict.unscored)}")
+    for key, issues in verdict.details.items():
+        for issue in issues:
+            print(f"  ! {key}: {issue}")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -127,6 +167,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Dry-run: show what tools would be tried",
     )
+    parser.add_argument(
+        "--evasion",
+        action="store_true",
+        help=(
+            "Dry-run: print the six-layer evasion plan, its cross-layer coherence "
+            "audit, and the offline anti-bot score for this URL"
+        ),
+    )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
     parser.add_argument(
         "--star",
@@ -187,6 +235,9 @@ def _main(argv: list[str] | None = None) -> int:
         if target_tool != "har" or not args.json:
             parser.error("--har-bodies requires a local HAR input (or --tool har) and --json")
         tool_kwargs["include_bodies"] = True
+    if args.evasion:
+        return _print_evasion(target, as_json=args.json)
+
     if args.diagnose:
         print(json.dumps(router.diagnose(target, **tool_kwargs), indent=2))
         return 0

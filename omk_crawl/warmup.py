@@ -282,14 +282,24 @@ class SessionWarmup:
     ) -> dict[str, str]:
         from patchright.sync_api import sync_playwright
 
-        profile = profile_for(root, self._seed)
+        # Use the full six-layer plan rather than the profile alone. The context
+        # kwargs and the init script then come from one identity, so the challenge
+        # flow sees a client whose headers, JS surface and TLS all agree — the
+        # property that v2.12 could only guarantee down to the header layer.
+        # Imported lazily so warmup's own import surface stays unchanged.
+        from omk_crawl.evasion import plan_for
+
+        plan = plan_for(root, salt=self._seed)
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=headless)
             try:
-                ctx_kwargs: dict[str, Any] = profile.browser_context_kwargs()
+                ctx_kwargs: dict[str, Any] = plan.browser_kwargs()
                 if proxy:
                     ctx_kwargs["proxy"] = {"server": proxy}
                 context = browser.new_context(**ctx_kwargs)
+                # Must precede any page script: the patches have to be installed
+                # before the challenge page can observe the raw browser.
+                context.add_init_script(plan.init_script())
                 page = context.new_page()
                 page.goto(root, wait_until="domcontentloaded", timeout=timeout * 1000)
                 page.wait_for_timeout(max(250, round(clock.think_time() * 1000)))

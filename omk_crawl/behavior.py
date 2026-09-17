@@ -17,8 +17,9 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+from dataclasses import dataclass
 
-__all__ = ["BehaviorClock"]
+__all__ = ["BehaviorClock", "Keystroke", "SessionPhase"]
 
 
 def _seed_int(seed: int | str | bytes) -> int:
@@ -43,6 +44,49 @@ def _to_int(value: float, fallback: int) -> int:
         return int(value)
     except (OverflowError, ValueError):
         return fallback
+
+
+@dataclass(frozen=True, slots=True)
+class Keystroke:
+    """One key press in a typing plan.
+
+    Attributes:
+        char: The key. ``"\b"`` means Backspace, so a driver can dispatch it
+            directly without interpreting a separate correction flag.
+        dwell_ms: Key hold time (press → release).
+        flight_ms: Gap before the *next* key.
+        correction: True when this keystroke is part of fixing a typo.
+    """
+
+    char: str
+    dwell_ms: int
+    flight_ms: int
+    correction: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SessionPhase:
+    """One phase of a browsing session.
+
+    Attributes:
+        kind: ``"burst"`` (actively requesting pages) or ``"pause"`` (idle).
+        pages: Pages fetched in this phase (0 for a pause).
+        duration_s: Idle time for a pause; 0 for a burst.
+    """
+
+    kind: str
+    pages: int
+    duration_s: float
+
+
+# Keys a human mistypes *to* when aiming at a neighbouring key. Used to keep
+# typos plausible rather than uniformly random.
+_NEIGHBOURS: dict[str, str] = {
+    "a": "s", "s": "d", "d": "f", "f": "g", "g": "h", "h": "j",
+    "q": "w", "w": "e", "e": "r", "r": "t", "t": "y", "y": "u",
+    "z": "x", "x": "c", "c": "v", "v": "b", "b": "n",
+    "1": "2", "2": "3", "3": "4", "4": "5",
+}
 
 
 class BehaviorClock:
@@ -150,3 +194,79 @@ class BehaviorClock:
             stops.append(min(position, scrollable))
         stops[-1] = scrollable
         return stops
+
+    # ── Typing ──────────────────────────────────────────────────────────
+
+    def typing_plan(
+        self,
+        text: str,
+        typo_rate: float = 0.015,
+        correction_rate: float = 0.75,
+    ) -> list[Keystroke]:
+        """Per-keystroke plan for typing ``text`` like a person.
+
+        Constant-rate synthetic typing is easy to separate from a human, who
+        holds each key for ~90 ms and varies the gap by ~150 ms with a long tail.
+        A small fraction of characters are mistyped with a neighbouring key and
+        then corrected — most typists fix some of their mistakes and leave
+        others (``correction_rate``), which is itself a plausibility detail.
+
+        Deterministic for a given seed and text. Newlines become Enter presses
+        and Backspace is emitted as ``"\b"``.
+        """
+        plan: list[Keystroke] = []
+
+        def _dwell() -> int:
+            return _to_int(_clamp(self._rng.lognormvariate(4.5, 0.28), 35, 220), 95)
+
+        def _flight() -> int:
+            return _to_int(_clamp(self._rng.lognormvariate(4.9, 0.40), 45, 520), 140)
+
+        for char in text:
+            key = "\n" if char == "\n" else char
+            lower = char.lower()
+            if lower in _NEIGHBOURS and self._rng.random() < typo_rate:
+                plan.append(Keystroke(_NEIGHBOURS[lower], _dwell(), _flight()))
+                if self._rng.random() < correction_rate:
+                    plan.append(Keystroke("\b", _dwell(), _flight(), correction=True))
+                    plan.append(Keystroke(key, _dwell(), _flight()))
+                    continue
+                # Mistake left in place — the next key is the real one.
+            plan.append(Keystroke(key, _dwell(), _flight()))
+
+        if plan:
+            last = plan[-1]
+            plan[-1] = Keystroke(last.char, last.dwell_ms, 0, last.correction)
+        return plan
+
+    # ── Session shape ───────────────────────────────────────────────────
+
+    def session_rhythm(
+        self, n_pages: int, lo_burst: int = 3, hi_burst: int = 7
+    ) -> list[SessionPhase]:
+        """Split a crawl into human-like bursts and idle pauses.
+
+        Real sessions are bursty: a handful of pages, then a pause of tens of
+        seconds to minutes. A perfectly even cadence across hundreds of pages
+        is the clearest possible bot signature — and it is also the politeness
+        behaviour the constitution asks for (P8), since the pauses are real
+        waiting, not just jitter.
+
+        Returns phases whose ``pages`` sum to ``n_pages``.
+        """
+        remaining = max(int(n_pages), 0)
+        phases: list[SessionPhase] = []
+        while remaining > 0:
+            burst = min(remaining, _to_int(self._rng.uniform(lo_burst, hi_burst + 1), lo_burst))
+            burst = max(burst, 1)
+            phases.append(SessionPhase("burst", burst, 0.0))
+            remaining -= burst
+            if remaining > 0:
+                phases.append(
+                    SessionPhase(
+                        "pause",
+                        0,
+                        round(_clamp(self._rng.lognormvariate(4.2, 0.7), 8.0, 420.0), 1),
+                    )
+                )
+        return phases

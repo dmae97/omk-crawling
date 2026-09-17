@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omk-crawl"
-version = "2.13.0"
+version = "2.14.0"
 description = "Smart crawling toolbox — web auto-escalation, anti-detect browsers, fingerprint coherence, session warm-up, adaptive API discovery, Android/iOS surfaces"
 readme = "README.md"
 license = "Apache-2.0"

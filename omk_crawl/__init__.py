@@ -36,8 +36,41 @@ from omk_crawl.baemin import (
     rank_shops,
     shops_to_markdown,
 )
-from omk_crawl.behavior import BehaviorClock
+from omk_crawl.behavior import BehaviorClock, Keystroke, SessionPhase
+from omk_crawl.browser_props import (
+    UNSUPPORTED_SURFACES,
+    BrowserPropertySpec,
+    audit_props,
+    property_spec,
+    spoof_script,
+    webgl_identity,
+)
+from omk_crawl.captcha import (
+    CaptchaChallenge,
+    CaptchaKind,
+    CaptchaPlan,
+    HttpSolver,
+    MockSolver,
+    NullSolver,
+    SolverBackend,
+    SolveResult,
+    SolveStatus,
+    classify_captcha,
+    resolve_challenge,
+)
+from omk_crawl.cdp import (
+    CDP_TELLS,
+    DRIVER_FIXED,
+    PatchPlan,
+    audit_cdp,
+    full_script,
+    patch_plan,
+)
+from omk_crawl.cdp import (
+    probe_script as cdp_probe_script,
+)
 from omk_crawl.cookies import Cookie, CookieManager
+from omk_crawl.evasion import CoherenceReport, EvasionPlan, plan_for
 from omk_crawl.fingerprint import (
     PROFILES,
     FingerprintProfile,
@@ -78,6 +111,8 @@ from omk_crawl.stability import (
     TimeoutBudget,
     get_logger,
 )
+from omk_crawl.tcp import EmulationReport, TcpStackProfile, apply_to_socket, stack_for
+from omk_crawl.tls import TlsClientHello, hello_for, normalize_grease
 from omk_crawl.tools.x_search import XSearchTool, x_search
 from omk_crawl.trends import (
     KNOWN_WOEIDS,
@@ -85,6 +120,15 @@ from omk_crawl.trends import (
     trend_to_tweets,
     trending_with_content,
 )
+from omk_crawl.verify import (
+    BehaviorSummary,
+    RequestSurface,
+    Verdict,
+    evasion_surface,
+    naive_stealth_surface,
+    stock_surface,
+)
+from omk_crawl.verify import score as evasion_score
 from omk_crawl.warmup import (
     CLEARANCE_COOKIES,
     SessionWarmup,
@@ -110,6 +154,51 @@ __all__ = [
     "WarmSession",
     "warm_crawl",
     "CLEARANCE_COOKIES",
+    # deep evasion (v2.14): TCP stack, TLS model, CDP patches, JS surface,
+    # behavior extensions, challenge policy, and the offline self-check
+    "EvasionPlan",
+    "CoherenceReport",
+    "plan_for",
+    "TcpStackProfile",
+    "EmulationReport",
+    "stack_for",
+    "apply_to_socket",
+    "TlsClientHello",
+    "hello_for",
+    "normalize_grease",
+    "PatchPlan",
+    "patch_plan",
+    "full_script",
+    "audit_cdp",
+    "cdp_probe_script",
+    "CDP_TELLS",
+    "DRIVER_FIXED",
+    "BrowserPropertySpec",
+    "property_spec",
+    "spoof_script",
+    "audit_props",
+    "webgl_identity",
+    "UNSUPPORTED_SURFACES",
+    "Keystroke",
+    "SessionPhase",
+    "CaptchaKind",
+    "CaptchaChallenge",
+    "CaptchaPlan",
+    "SolveStatus",
+    "SolveResult",
+    "SolverBackend",
+    "NullSolver",
+    "MockSolver",
+    "HttpSolver",
+    "classify_captcha",
+    "resolve_challenge",
+    "RequestSurface",
+    "BehaviorSummary",
+    "Verdict",
+    "evasion_score",
+    "stock_surface",
+    "naive_stealth_surface",
+    "evasion_surface",
     # resilience
     "TokenBucket",
     "RetryPolicy",
@@ -174,4 +263,4 @@ __all__ = [
     "trend_to_tweets",
     "trending_with_content",
 ]
-__version__ = "2.13.0"
+__version__ = "2.14.0"

@@ -60,9 +60,16 @@ from omk_crawl.cdp import (
 from omk_crawl.evasion import plan_for
 from omk_crawl.fingerprint import PROFILES, profile_for
 from omk_crawl.tcp import (
+    MAX_OPTION_BYTES,
+    OPT_MSS,
+    OPT_NOP,
+    OPT_SACK_PERMITTED,
+    OPT_WINDOW_SCALE,
     STACKS,
     apply_to_socket,
     audit_tcp,
+    decode_option_values,
+    decode_options,
     signature_accounting,
     stack_for,
 )
@@ -129,6 +136,43 @@ class TestTcpStacks:
     def test_self_signature_is_clean(self):
         for stack in STACKS:
             assert audit_tcp(stack.syn_signature(), stack) == []
+
+    def test_no_stack_contradicts_its_own_option_order(self):
+        """A stack that declares a flag its options do not carry would be
+        emitted exactly as written, so it is checked with no observation."""
+        for stack in STACKS:
+            assert audit_tcp({}, stack) == [], stack.name
+
+    def test_audit_catches_a_timestamp_contradiction(self):
+        from dataclasses import replace as dc_replace
+
+        contradictory = dc_replace(
+            next(s for s in STACKS if s.name == "linux-6"),
+            options=(OPT_MSS, OPT_SACK_PERMITTED, OPT_NOP, OPT_WINDOW_SCALE),
+            timestamps=True,
+        )
+        assert any("timestamps" in issue for issue in audit_tcp({}, contradictory))
+
+    def test_audit_catches_a_sack_contradiction(self):
+        from dataclasses import replace as dc_replace
+
+        contradictory = dc_replace(
+            next(s for s in STACKS if s.name == "linux-6"),
+            options=(OPT_MSS, OPT_WINDOW_SCALE),
+            sack_ok=True,
+        )
+        assert any("sack_ok" in issue for issue in audit_tcp({}, contradictory))
+
+    def test_audit_catches_a_missing_mss_option(self):
+        from dataclasses import replace as dc_replace
+
+        contradictory = dc_replace(
+            next(s for s in STACKS if s.name == "linux-6"),
+            options=(OPT_WINDOW_SCALE,),
+            sack_ok=False,
+            timestamps=False,
+        )
+        assert any("MSS" in issue for issue in audit_tcp({}, contradictory))
 
     def test_apply_to_socket_changes_ttl_for_real(self):
         """The claim 'we set TTL' is only worth anything if the kernel agrees."""
@@ -1001,6 +1045,161 @@ class TestTcpPathRobustness:
                 apply_to_socket(sock, stack)
             finally:
                 sock.close()
+
+
+class _StubSocket:
+    """A socket whose kernel behaves like a different platform.
+
+    The whole premise of this layer is that kernels differ, and only one kernel
+    is available locally. This stub lets the difference be exercised
+    deterministically: options can be rejected, accepted-then-clamped, or
+    accepted with the read-back refused. The real kernels of the other platforms
+    are covered by the `platform` job in CI.
+    """
+
+    _NAMES = {
+        (socket.IPPROTO_IP, getattr(socket, "IP_TTL", -1)): "ttl",
+        (socket.IPPROTO_TCP, getattr(socket, "TCP_MAXSEG", -2)): "mss",
+        (socket.IPPROTO_TCP, getattr(socket, "TCP_NODELAY", -3)): "nodelay",
+        (socket.SOL_SOCKET, socket.SO_RCVBUF): "rcvbuf",
+    }
+
+    def __init__(self, reject=(), clamp=None, unreadable=()):
+        self._reject = set(reject)
+        self._clamp = dict(clamp or {})
+        self._unreadable = set(unreadable)
+        self.requested: dict[str, int] = {}
+        self._stored: dict[str, int] = {}
+
+    def _name(self, level: int, opt: int) -> str:
+        return self._NAMES.get((level, opt), f"{level}:{opt}")
+
+    def setsockopt(self, level, opt, value):
+        name = self._name(level, opt)
+        if name in self._reject:
+            raise OSError(92, "Protocol not available")
+        self.requested[name] = value
+        self._stored[name] = value
+
+    def getsockopt(self, level, opt):
+        name = self._name(level, opt)
+        if name in self._unreadable or name not in self._stored:
+            raise OSError(95, "Operation not supported")
+        return self._clamp.get(name, self._stored[name])
+
+
+class TestPlatformVariance:
+    """Platform-difference branches, exercised without needing the platform."""
+
+    def test_rejected_option_is_reported_not_raised(self):
+        stub = _StubSocket(reject={"rcvbuf"})
+        report = apply_to_socket(stub, STACKS[0])  # type: ignore[arg-type]
+        assert "rcvbuf" in report.errors
+        assert "rcvbuf" not in report.applied
+        assert "ttl" in report.applied, "other options still applied"
+        assert not report.ok
+
+    def test_clamped_value_is_recorded_not_the_request(self):
+        """`applied` must hold what the kernel accepted, not what we asked for."""
+        stack = STACKS[0]
+        stub = _StubSocket(clamp={"rcvbuf": 65_536})
+        report = apply_to_socket(stub, stack)  # type: ignore[arg-type]
+        assert stub.requested["rcvbuf"] == max(stack.window, 4096)
+        assert report.applied["rcvbuf"] == 65_536
+        assert report.errors == {}
+        assert report.ok
+
+    def test_accepted_but_unreadable_is_not_reported_as_an_error(self):
+        """A platform that sets an option yet refuses the read-back still worked."""
+        stub = _StubSocket(unreadable={"mss"})
+        report = apply_to_socket(stub, STACKS[0])  # type: ignore[arg-type]
+        assert "mss" not in report.errors
+        assert "unreadable" in str(report.applied["mss"])
+        assert report.ok
+
+    def test_tcp_options_absent_from_a_platform_do_not_crash(self, monkeypatch):
+        """Some platforms define neither the constant nor the option."""
+        import omk_crawl.tcp as tcp_module
+
+        monkeypatch.delattr(tcp_module.socket, "TCP_MAXSEG", raising=False)
+        report = apply_to_socket(_StubSocket(), STACKS[0])  # type: ignore[arg-type]
+        assert "mss" not in report.applied
+        assert "mss" not in report.errors, "a missing constant is not a failed set"
+
+
+class TestTcpWireEncoding:
+    """The option specification must be emittable, not just descriptive.
+
+    An unprivileged process cannot open a raw socket, so byte-level encoding and
+    a round-trip decode stand in for packet injection as the honest check that
+    the specification says what it claims.
+    """
+
+    @pytest.mark.parametrize("stack", STACKS, ids=[s.name for s in STACKS])
+    def test_options_round_trip_through_wire_format(self, stack):
+        encoded = stack.option_bytes()
+        assert decode_options(encoded) == stack.options
+
+    @pytest.mark.parametrize("stack", STACKS, ids=[s.name for s in STACKS])
+    def test_encoded_options_fit_the_tcp_header(self, stack):
+        assert len(stack.option_bytes()) <= MAX_OPTION_BYTES
+
+    def test_mss_and_window_scale_values_are_encoded(self):
+        stack = next(s for s in STACKS if s.name == "windows-11")
+        encoded = stack.option_bytes()
+        assert encoded[:4] == bytes([2, 4]) + stack.mss.to_bytes(2, "big")
+        assert bytes([3, 3, stack.window_scaling]) in encoded
+
+    def test_orders_that_define_a_platform_stay_distinct(self):
+        """Windows and Unix must not encode to the same bytes."""
+        windows = next(s for s in STACKS if s.name == "windows-11")
+        linux = next(s for s in STACKS if s.name == "linux-6")
+        assert windows.option_bytes() != linux.option_bytes()
+
+    def test_same_kernel_family_shares_an_encoding(self):
+        """Android runs the Linux TCP stack; identical bytes are correct here."""
+        linux = next(s for s in STACKS if s.name == "linux-6")
+        android = next(s for s in STACKS if s.name == "android-14")
+        assert linux.option_bytes() == android.option_bytes()
+
+    @pytest.mark.parametrize(
+        ("data", "reason"),
+        [
+            (bytes([2]), "truncated"),
+            (bytes([2, 1]), "malformed"),
+            (bytes([2, 99]), "malformed"),
+        ],
+    )
+    def test_decoder_rejects_malformed_options(self, data, reason):
+        with pytest.raises(ValueError, match=reason):
+            decode_options(data)
+
+    def test_decoder_handles_single_byte_options(self):
+        assert decode_options(bytes([1, 1])) == (1, 1)
+        assert decode_options(bytes([0])) == (0,)
+
+    @pytest.mark.parametrize("stack", STACKS, ids=[s.name for s in STACKS])
+    def test_payload_values_round_trip_not_just_the_order(self, stack):
+        """Order alone is not enough: a packet can carry the right kinds with the
+        wrong MSS or shift, and that pair is what passive fingerprinters compare."""
+        values = decode_option_values(stack.option_bytes())
+        assert values.mss == stack.mss
+        assert values.window_scaling == stack.window_scaling
+        assert values.sack_ok == stack.sack_ok
+        assert values.timestamps == stack.timestamps
+
+    def test_payload_decoding_catches_a_wrong_mss(self):
+        stack = next(s for s in STACKS if s.name == "linux-6")
+        corrupted = bytearray(stack.option_bytes())
+        corrupted[2:4] = (1).to_bytes(2, "big")
+        assert decode_option_values(bytes(corrupted)).mss != stack.mss
+
+    def test_payload_decoder_rejects_a_short_mss(self):
+        with pytest.raises(ValueError, match="MSS option carries"):
+            decode_option_values(bytes([2, 3, 5]))
+
+    def test_payload_values_serialize(self):
+        assert json.dumps(decode_option_values(STACKS[0].option_bytes()).to_dict())
 
 
 class TestHttpSolverOverRealTransport:

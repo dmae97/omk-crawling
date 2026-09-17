@@ -30,6 +30,26 @@ jobs:
       - run: pip install -e ".[curl,dev]"
       - run: pytest tests/ -v --tb=short -m 'not live'
 
+  platform:
+    # The TCP stack layer exists because kernel behaviour differs by OS, so a
+    # Linux-only run cannot verify its own premise. This job runs the
+    # platform-sensitive tests on the kernels the stack profiles claim to be:
+    # windows-11 / windows-10, macos-14, and linux-6. Deliberately narrow —
+    # unrelated suite failures on another OS would hide the signal.
+    name: platform (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[curl,dev]"
+      - run: pytest tests/test_evasion_layers.py -v --tb=long -m 'not live' -k "Tcp or Platform or Solver or Transport"
+
   build:
     runs-on: ubuntu-latest
     steps:

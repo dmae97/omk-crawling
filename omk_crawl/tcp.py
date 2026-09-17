@@ -28,6 +28,7 @@ socket is not possible, and pretending otherwise would be a lie in the metadata.
 from __future__ import annotations
 
 import socket
+import struct
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,10 +37,13 @@ from omk_crawl.fingerprint import FingerprintProfile
 
 __all__ = [
     "EmulationReport",
+    "OptionValues",
     "STACKS",
     "TcpStackProfile",
     "apply_to_socket",
     "audit_tcp",
+    "decode_option_values",
+    "decode_options",
     "signature_accounting",
     "stack_for",
 ]
@@ -60,6 +64,119 @@ _OPTION_NAMES: dict[int, str] = {
     OPT_SACK_PERMITTED: "sackOK",
     OPT_TIMESTAMPS: "ts",
 }
+
+# Wire encoders, keyed by option kind. EOL and NOP are single bytes; the rest
+# carry a length byte followed by their payload. SYN timestamps start at zero
+# because the TSval/TSecr exchange has not happened yet.
+_OPTION_ENCODERS: dict[int, Any] = {
+    OPT_END: lambda stack: bytes([OPT_END]),
+    OPT_NOP: lambda stack: bytes([OPT_NOP]),
+    OPT_MSS: lambda stack: struct.pack("!BBH", OPT_MSS, 4, stack.mss),
+    OPT_WINDOW_SCALE: lambda stack: struct.pack("!BBB", OPT_WINDOW_SCALE, 3, stack.window_scaling),
+    OPT_SACK_PERMITTED: lambda stack: struct.pack("!BB", OPT_SACK_PERMITTED, 2),
+    OPT_TIMESTAMPS: lambda stack: struct.pack("!BBII", OPT_TIMESTAMPS, 10, 0, 0),
+}
+
+#: TCP options may not exceed 40 bytes (the header's 4-bit data offset caps it).
+MAX_OPTION_BYTES = 40
+
+
+@dataclass(frozen=True, slots=True)
+class OptionValues:
+    """The semantic fields a SYN's options actually carry.
+
+    Order round-trips are necessary but not sufficient: a packet can carry the
+    right option kinds in the right order with the wrong payload, and the pair
+    (MSS, window scale) is exactly what passive fingerprinters compare. This is
+    the decoded counterpart of :meth:`TcpStackProfile.option_bytes`.
+    """
+
+    mss: int | None = None
+    window_scaling: int | None = None
+    sack_ok: bool = False
+    timestamps: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mss": self.mss,
+            "window_scaling": self.window_scaling,
+            "sack_ok": self.sack_ok,
+            "timestamps": self.timestamps,
+        }
+
+
+def decode_option_values(data: bytes) -> OptionValues:
+    """Decode MSS, window scale, SACK and timestamp presence from option bytes.
+
+    Raises:
+        ValueError: on a malformed option block, matching :func:`decode_options`.
+    """
+    mss: int | None = None
+    window_scaling: int | None = None
+    sack_ok = False
+    timestamps = False
+
+    offset = 0
+    while offset < len(data):
+        kind = data[offset]
+        if kind == OPT_END:
+            break
+        if kind == OPT_NOP:
+            offset += 1
+            continue
+        if offset + 1 >= len(data):
+            raise ValueError(f"truncated TCP option header at offset {offset}")
+        length = data[offset + 1]
+        if length < 2 or offset + length > len(data):
+            raise ValueError(f"malformed TCP option length {length} at offset {offset}")
+        payload = data[offset + 2 : offset + length]
+        if kind == OPT_MSS:
+            if len(payload) != 2:
+                raise ValueError(f"MSS option carries {len(payload)} payload bytes, expected 2")
+            mss = struct.unpack("!H", payload)[0]
+        elif kind == OPT_WINDOW_SCALE:
+            if len(payload) != 1:
+                raise ValueError(f"window scale carries {len(payload)} bytes, expected 1")
+            window_scaling = payload[0]
+        elif kind == OPT_SACK_PERMITTED:
+            sack_ok = True
+        elif kind == OPT_TIMESTAMPS:
+            if len(payload) != 8:
+                raise ValueError(f"timestamps carry {len(payload)} bytes, expected 8")
+            timestamps = True
+        offset += length
+
+    return OptionValues(
+        mss=mss, window_scaling=window_scaling, sack_ok=sack_ok, timestamps=timestamps
+    )
+
+
+def decode_options(data: bytes) -> tuple[int, ...]:
+    """Option kinds in wire order — the inverse of :meth:`TcpStackProfile.option_bytes`.
+
+    Raises:
+        ValueError: on a truncated header or an impossible option length, so a
+            malformed capture is reported instead of mis-parsed.
+    """
+    kinds: list[int] = []
+    offset = 0
+    while offset < len(data):
+        kind = data[offset]
+        if kind == OPT_END:
+            kinds.append(kind)
+            break
+        if kind == OPT_NOP:
+            kinds.append(kind)
+            offset += 1
+            continue
+        if offset + 1 >= len(data):
+            raise ValueError(f"truncated TCP option header at offset {offset}")
+        length = data[offset + 1]
+        if length < 2 or offset + length > len(data):
+            raise ValueError(f"malformed TCP option length {length} at offset {offset}")
+        kinds.append(kind)
+        offset += length
+    return tuple(kinds)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +217,27 @@ class TcpStackProfile:
         """Human-readable option order for audit output."""
         return [_OPTION_NAMES.get(k, f"kind{k}") for k in self.options]
 
+    def option_bytes(self) -> bytes:
+        """The SYN's TCP options in wire format, in this stack's order.
+
+        This is what makes the specification actionable rather than decorative: an
+        operator with a raw socket (or a BPF/nfqueue path) can take these bytes
+        straight into a SYN they build themselves. An unprivileged process cannot
+        open a raw socket, so encoding plus a round-trip decode is the verifiable
+        surface here instead of packet injection.
+
+        Raises:
+            ValueError: if an option kind has no encoder, rather than emitting a
+                silently malformed packet.
+        """
+        out = bytearray()
+        for kind in self.options:
+            encoder = _OPTION_ENCODERS.get(kind)
+            if encoder is None:
+                raise ValueError(f"no wire encoder for TCP option kind {kind}")
+            out += encoder(self)
+        return bytes(out)
+
     def syn_signature(self) -> dict[str, Any]:
         """Complete, JSON-safe signature — the spec an operator can wire up.
 
@@ -133,7 +271,12 @@ STACKS: tuple[TcpStackProfile, ...] = (
         window=64240,
         mss=1460,
         window_scaling=8,
-        # Windows places NOPs around the window scale — the classic tell.
+        # Windows places NOPs around the window scale, and it does **not** offer
+        # timestamps in the SYN. The earlier model claimed it did while the
+        # option order contained no timestamps option; the payload round-trip test
+        # caught the contradiction, and the observed Windows 10/11 signature
+        # (M,N,W,N,N,S) is what stands.
+        timestamps=False,
         options=(OPT_MSS, OPT_NOP, OPT_WINDOW_SCALE, OPT_NOP, OPT_NOP, OPT_SACK_PERMITTED),
     ),
     TcpStackProfile(
@@ -143,6 +286,7 @@ STACKS: tuple[TcpStackProfile, ...] = (
         window=64240,
         mss=1460,
         window_scaling=8,
+        timestamps=False,
         options=(OPT_MSS, OPT_NOP, OPT_WINDOW_SCALE, OPT_NOP, OPT_NOP, OPT_SACK_PERMITTED),
     ),
     TcpStackProfile(
@@ -301,9 +445,17 @@ def apply_to_socket(sock: socket.socket, stack: TcpStackProfile) -> EmulationRep
     def _attempt(field_name: str, level: int, opt: int, value: int) -> None:
         try:
             sock.setsockopt(level, opt, value)
-            report.applied[field_name] = sock.getsockopt(level, opt)
         except (OSError, ValueError, OverflowError, AttributeError) as exc:
             report.errors[field_name] = f"{type(exc).__name__}: {exc}"
+            return
+        # Read back so `applied` records what the kernel accepted, not what we
+        # asked for — buffers get clamped. A platform that accepts the set but
+        # refuses the read-back is not a failure, so it is recorded as unreadable
+        # rather than as an error, which would misreport a working option.
+        try:
+            report.applied[field_name] = sock.getsockopt(level, opt)
+        except (OSError, ValueError, OverflowError, AttributeError) as exc:
+            report.applied[field_name] = f"<set, unreadable: {type(exc).__name__}>"
 
     if hasattr(socket, "IP_TTL"):
         _attempt("ttl", socket.IPPROTO_IP, socket.IP_TTL, stack.ttl)
@@ -337,8 +489,29 @@ def audit_tcp(
     also checked against the UA's OS claim — the cross-layer rule that matters
     most, since a self-consistent stack that disagrees with the UA is still a
     contradiction.
+
+    Three internal contradictions are checked even with no observation, because
+    a stack that disagrees with its own option order would be emitted as-is:
+    ``timestamps`` and ``sack_ok`` must match the option list, and the list must
+    contain an MSS option.
     """
     issues: list[str] = []
+
+    options = stack.options
+    if OPT_MSS not in options:
+        issues.append(f"stack {stack.name} declares no MSS option — no real OS omits it")
+    if (OPT_TIMESTAMPS in options) != stack.timestamps:
+        issues.append(
+            f"stack {stack.name} declares timestamps={stack.timestamps} but its option "
+            f"order {'has' if OPT_TIMESTAMPS in options else 'has no'} timestamps option"
+        )
+    if (OPT_SACK_PERMITTED in options) != stack.sack_ok:
+        issues.append(
+            f"stack {stack.name} declares sack_ok={stack.sack_ok} but its option "
+            f"order {'has' if OPT_SACK_PERMITTED in options else 'has no'} SACK option"
+        )
+    if (OPT_WINDOW_SCALE in options) and stack.window_scaling <= 0:
+        issues.append(f"stack {stack.name} offers a window scale option with shift 0")
 
     if profile is not None and stack.os_family.lower() != profile.platform_os.lower():
         issues.append(

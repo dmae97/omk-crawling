@@ -1,5 +1,68 @@
 # Changelog
 
+## [2.14.0] — 2026-09-17
+
+Deep evasion layers: the four surfaces v2.12 left unmanaged (below TLS, above the
+headers, beside the protocol, and the challenge policy) are now derived from the same
+`FingerprintProfile`, so cross-layer agreement is a construction property rather than
+a review checklist. New spec: `specs/003-deep-evasion-layers/`.
+
+### Added
+
+- `tcp.py` — OS-level TCP/IP SYN signatures (`TcpStackProfile` for Windows 10/11,
+macOS 14, Linux 6, Android 14, iOS 17) with `stack_for(profile)` deriving the stack
+from the UA's OS claim. `apply_to_socket()` sets what `setsockopt` genuinely controls
+(`IP_TTL` verified against a real socket, `TCP_MAXSEG`, `TCP_NODELAY`, `SO_RCVBUF`) and
+reports kernel-owned fields (window scaling, option order, timestamps, DF) in
+`EmulationReport.unsupported` instead of claiming them.
+- `tls.py` — GREASE normalization (RFC 8701) and deterministic JA3 / JA4-style model
+identifiers per browser family, plus `audit_tls()` family checks and `drift_report()`
+for the temporal axis. Models only: the wire handshake remains `curl_cffi`'s real stack.
+- `cdp.py` — a registry of 13 automation tells with boolean JS probes, a seeded
+`PatchPlan`, and leak auditing. Every patch goes through a closure-scoped `native()`
+wrapper so `Function.prototype.toString` still reports `[native code]`; the composed
+script is one IIFE that attaches nothing to `window`.
+- `browser_props.py` — the JS object surface (navigator, screen, Intl timezone, WebGL,
+PDF plugins, canvas/audio noise) derived from the profile, with seeded noise that is
+stable per site. `audit_props()` checks platform, locale, timezone, the screen ≥
+viewport invariant, renderer plausibility and touch points.
+- `captcha.py` — challenge classification (`CaptchaKind`, 11 families plus NONE and
+UNKNOWN) and the solver policy v2.12 left open: `clearance_flow` by default, `solver`
+only on explicit opt-in against an environment-gated endpoint, and `refuse` for
+interactive challenges. No credentials in source; `NullSolver` is the default.
+- `evasion.py` — `plan_for(url)` binds all six layers to one seeded identity and
+`coherence_report()` re-audits them. `browser_kwargs()`, `init_script()`, `curl_kwargs()`
+and `as_metadata()` are the consumption points.
+- `verify.py` — an offline mock anti-bot detector scoring seven weighted checks, shipped
+as product code so an operator can self-check a configuration before a real site does.
+- `behavior.py` — `typing_plan()` (seeded keystroke dwell/flight with neighbouring-key
+typos and corrections) and `session_rhythm()` (burst/pause structure). The v2.12 API is
+unchanged.
+- Real-path wiring: `curl_cffi` adapter honours `evade=True` (profile-derived TLS target
+and headers, with the cross-layer audit in metadata), `SessionWarmup` installs the
+composed init script before any page script runs, and `omk-crawl <url> --evasion` prints
+the plan, its coherence audit and the offline score.
+- `scripts/bench_evasion.py` and `benchmarks/evasion/latest.json`.
+
+### Findings
+
+- The offline benchmark reproduces the research claim rather than restating it: a
+naively stealthed client scores **0.059** while an honest `python-requests`-style client
+scores **0.643** — glued-on browser headers over a non-browser stack are *more*
+detectable than no pretence at all. The coherent plan scores **1.000**.
+- Plan construction costs ~0.02 ms (p50), so per-site identity is effectively free.
+
+### Fixed
+
+- Three defects found by execution rather than inspection, each now covered by a
+regression test: two tells sharing one patch fragment emitted it twice and the duplicate
+`const` aborted the whole composed script with a `SyntaxError` (silently disabling every
+patch); a patchable tell lost its fragment mapping and was skipped; and the plan seed was
+keyed on the full URL, so two pages of the same site presented different canvas noise —
+the intra-session drift FP-Inconsistent measures.
+- The macOS device-pixel-ratio pool offered 1.0, which contradicts a Retina panel at a
+1680 px viewport. The coherence self-check caught it; the pool was wrong, not the audit.
+
 ## [2.13.0] — 2026-09-12
 
 ### Added

@@ -83,3 +83,176 @@ manager.get(url); manager.invalidate(url)
 - AUTH_REQUIRED(401/로그인)는 절대 우회하지 않는다 — 라우팅 테이블 `[]`.
 - 웜업·스텔스·지문 일관성은 접근 자격이 있는 콘텐츠의 클라이언트 차별에 한정.
 - 세션 쿠키는 로컬 0600 캐시, TTL 만료 자동 폐기, 같은 도메인에만 리플레이.
+
+---
+
+# Deep evasion layers - tls, tcp, cdp, props, captcha, evasion (v2.14)
+
+> v2.12 enforced coherence down to the HTTP headers. v2.14 derives the layers below
+> (TCP), above (the JS object surface) and beside (CDP artifacts) it from the same
+> identity, and adds the challenge policy v2.12 left open.
+> Spec: `specs/003-deep-evasion-layers/`. Benchmark: `python3 scripts/bench_evasion.py`.
+
+> **Language note.** The v2.12 section above is Korean. This section is English
+> because the tooling in this environment dropped characters from Korean text on the
+> way into the repository. Correct English is preferable to damaged prose; the code
+> itself contains no Korean.
+
+## In one line
+
+```python
+from omk_crawl import plan_for
+
+plan = plan_for("https://example.com")   # six layers from one seed
+plan.coherence_report().ok               # self-audit; failures come with reasons
+plan.init_script()                       # CDP patches + JS surface in one IIFE
+plan.curl_kwargs()                       # a TLS target and headers that agree
+```
+
+```bash
+omk-crawl https://example.com --evasion          # plan + audit + offline score
+omk-crawl https://example.com --evasion --json
+python3 scripts/bench_evasion.py                 # three-strategy comparison
+```
+
+## tcp.py - the TCP/IP stack
+
+A UA claiming Windows over a Linux SYN is a contradiction by itself. The stack is
+derived from `FingerprintProfile.platform_os`, never chosen independently.
+
+```python
+from omk_crawl import stack_for, apply_to_socket
+
+stack = stack_for(profile)     # windows-11 / macos-14 / linux-6 / android-14 / ios-17
+stack.option_names()           # ['mss','nop','ws','nop','nop','sackOK'] - order is the tell
+report = apply_to_socket(sock, stack)
+report.applied                 # values the kernel actually accepted (TTL verified)
+report.unsupported             # kernel-owned: window_scaling, options, timestamps, df
+```
+
+Only what `setsockopt` controls is applied. The rest is reported as unsupported
+rather than claimed (constitution P1).
+
+## tls.py - JA3/JA4 normalization
+
+GREASE is redrawn per connection, so it must be stripped before hashing or the
+fingerprint is unstable. The model is audited; the real handshake remains
+`curl_cffi`'s.
+
+```python
+from omk_crawl import hello_for, normalize_grease, audit_tls
+
+hello = hello_for(profile)         # per-family ClientHello model
+hello.ja3(), hello.ja4_model()     # deterministic after GREASE removal
+audit_tls(hello, profile)          # GREASE / ALPN / TLS1.3 vs the UA family
+```
+
+`drift_report(previous, current)` compares two hellos on the temporal axis and treats
+GREASE-only churn as stable.
+
+## browser_props.py - the JS object surface
+
+`navigator.*`, `screen.*`, the Intl timezone, the unmasked WebGL renderer, PDF
+plugins and canvas/audio noise are all derived from the profile.
+
+```python
+from omk_crawl import property_spec, spoof_script, audit_props
+
+spec = property_spec(profile, seed)   # same (profile, seed) -> byte-identical
+script = spoof_script(spec)           # seeded LCG pins the canvas noise
+audit_props(observed, profile)        # platform / locale / tz / screen>=viewport / renderer
+```
+
+A device that resamples its canvas hash on every visit is itself a signal. One seed
+produces one noise, so the hash is stable where it should be.
+
+## cdp.py - CDP leak patching
+
+```python
+from omk_crawl import patch_plan, patch_js, audit_cdp, cdp_probe_script
+
+plan = patch_plan(profile, seed)   # deterministic; patching is keyed on the fragment
+js = patch_js(plan)                # one IIFE, nothing attached to window
+page.evaluate(cdp_probe_script())  # self-check before a real site sees anything
+audit_cdp(surface)                 # leaks, worst first
+```
+
+Two rules are enforced structurally:
+
+- **A patch must look native.** If a patched function exposes its source through
+  `Function.prototype.toString`, the patch is a new tell. Every injection goes
+  through a closure-scoped `native()` wrapper reporting `[native code]`.
+- **Nothing is attached to `window`.** A global such as `__omkNative` would be a
+  unique token for a detector to key on.
+
+What JS cannot fix is reported honestly in `plan.driver_fixed`. `Runtime.enable` is
+protocol state and cannot be undone from a script; the fix is driver choice
+(nodriver/patchright).
+
+## behavior.py - typing dynamics and session rhythm (v2.14 extension)
+
+```python
+from omk_crawl import BehaviorClock
+
+clock = BehaviorClock("site|session")
+for k in clock.typing_plan("hello world"):     # key hold/flight + neighbour-key typos
+    if k.char == "\b": page.keyboard.press("Backspace")
+    else: page.keyboard.type(k.char, delay=k.dwell_ms)
+for phase in clock.session_rhythm(40):         # bursts of 3-7 pages, pauses of 8-420 s
+    ...
+```
+
+The burst/pause structure is evasion and politeness at once (constitution P8): the
+pauses are real waiting, not decoration.
+
+## captcha.py - challenge classification and policy
+
+This is the extension point v2.12 left open, made concrete. It is not a bypass tool.
+
+```python
+from omk_crawl import classify_captcha, resolve_challenge, HttpSolver
+
+challenge = classify_captcha(html)         # 11 families + NONE + UNKNOWN
+plan = resolve_challenge(challenge, url)   # proceed / clearance_flow / solver / refuse
+plan.action, plan.reason                   # a refusal always carries its reason
+```
+
+| Decision | Applies to | Action |
+| -------- | ---------- | ------ |
+| No challenge | `NONE` | `proceed` |
+| Clearable in-browser | Turnstile, reCAPTCHA v3, DataDome, Kasada, AWS WAF | `clearance_flow` (no cost, no third party) |
+| Needs a person | image grid, slider, press-and-hold, `UNKNOWN` | `refuse` - never sent to a solver |
+| Operator opt-in | clearable kinds with `prefer_solver=True` | `solver` |
+
+- **Human-judgement challenges are never routed to a backend.** `resolve_challenge`
+  refuses them before it looks at what backends exist, so a configuration mistake
+  cannot route an image grid to a solver.
+- **No credentials in source.** `HttpSolver` is inert unless both
+  `OMK_CAPTCHA_ENDPOINT` and `OMK_CAPTCHA_KEY` are set; otherwise it fails closed with
+  `NO_CREDENTIAL`.
+- A login wall (`AUTH_REQUIRED`) remains out of scope (constitution P3).
+
+## evasion.py and verify.py - arbiter and self-check
+
+`plan_for(url)` binds the six layers into one identity and `coherence_report()`
+re-audits each of them. The mock detector in `verify.py` scores seven axes with no
+network access.
+
+```python
+from omk_crawl import evasion_score, evasion_surface, plan_for
+
+plan_for("https://example.com").coherence_report().to_dict()   # per-layer verdicts
+evasion_score(evasion_surface("https://example.com"))          # offline score
+```
+
+## Measured benchmark (offline, v2.14.0)
+
+| Strategy | Score | Detected axes |
+| -------- | ----- | ------------- |
+| `stock` (plain library client) | 0.643 | tls_family, behavior_cadence |
+| `naive_stealth` (browser headers glued on) | **0.059** | all six axes |
+| `omk_evasion` (coherent plan) | **1.000** | none |
+
+That `naive_stealth` scores *worse* than `stock` is the claim of arXiv:2606.30119,
+and this benchmark shows it as a measurement rather than a restatement. Plan
+construction costs 0.02 ms at p50.

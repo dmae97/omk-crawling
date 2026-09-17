@@ -6,10 +6,12 @@ description: 'OMK 웹·데이터 수집/추출 툴���스 — 13개 도구 
   학습), markitdown(파일→Markdown), scrcpy(Android 미러·제어), scrapling(스텔스·안티봇),
   insane-search(단일 차단 URL), camoufox(안티디텍트 Firefox), nodriver(CDP 네이티브 Chrome),
   patchright(패치된 Playwright). 돌파 레이어: 크로스레이어 지문 일관성(fingerprint), 시드 결정적
-  인간 행동(behavior), 세션 웜업·클리어런스 재사용(warmup). 크롤링·스크래핑·딥크롤·RAG 수집·
-  안티봇 우회·브라우저 자동화·모바일 앱 수집 필요 시 사용.'
+  인간 행동(behavior), 세션 웜업·클리어런스 재사용(warmup). Deep evasion layers (v2.14): TCP stack emulation, TLS/JA3 normalization, CDP leak
+  patching, JS property spoofing, typing and session rhythm, challenge policy, and an
+  offline self-check. Use for crawling, scraping, deep crawl, RAG collection, anti-bot
+  navigation, browser automation, or mobile app collection.'
 license: Apache-2.0
-version: 2.13.0
+version: 2.14.0
 metadata:
   category: research
   locale: ko-KR
@@ -52,6 +54,10 @@ metadata:
 ⑥ 모바일·네이티브          apk/ipa 정적 분석 · scrcpy/adb(Android 미러·dumpsys) · [tools/mobile.md](references/tools/mobile.md)
 ⓪ 돌파 레이어 (v2.12)     fingerprint(크로스레이어 지문 일관성) · behavior(시드 결정적 인간 행동)
                           · warmup(세션 웜업→클리어런스 쿠키 재사용) — [breakthrough.md](references/breakthrough.md)
+⓪ deep evasion (v2.14)     tls(JA3/JA4 normalization) | tcp(TCP stack emulation)
+                          | cdp(CDP leak patching) | props(JS property spoofing)
+                          | captcha(challenge policy) | evasion(six-layer arbiter)
+                          + verify(offline self-check) - [breakthrough.md](references/breakthrough.md)
 ```
 
 ## 마스터 라우터 (목표 → 1순위 도구)
@@ -65,6 +71,10 @@ metadata:
 | 안티디텍트 **Firefox** (C++ 레벨 지문 주입, geoip) | `camoufox` | [tools/camoufox.md](references/tools/camoufox.md) |
 | **Playwright 그대로** 탐지 패치만 입힌 드롭인 | `patchright` | [tools/patchright.md](references/tools/patchright.md) |
 | **한 번 통과한 세션 재사용** (cf_clearance 등) | `warm_crawl` | [breakthrough.md](references/breakthrough.md) |
+| **Self-check the configuration before a site blocks you** (per-axis verdict, offline) | `evasion_score(evasion_surface(url))` or `omk-crawl <url> --evasion` | [breakthrough.md](references/breakthrough.md) |
+| **Decide what to do about a challenge page** | `resolve_challenge` / `classify_captcha` | [breakthrough.md](references/breakthrough.md) |
+| **Match the TCP signature to the OS the UA claims** | `stack_for` / `apply_to_socket` | [breakthrough.md](references/breakthrough.md) |
+| **Remove CDP/automation artifacts and verify it** | `patch_plan` / `cdp_probe_script` / `audit_cdp` | [breakthrough.md](references/breakthrough.md) |
 | **대규모 클래식 크롤** (파이프라인·미들웨어·성숙한 생태계) | **scrapy** | [tools/scrapy.md](references/tools/scrapy.md) |
 | **큐·오토스케일·프록시 로테이션**, JS/TS 또는 Python | **crawlee** | [tools/crawlee.md](references/tools/crawlee.md) |
 | 웹 → **LLM용 Markdown** / **딥크롤**(사이트·문서 전체) / **MCP** | **crawl4ai** | [choosing.md](references/choosing.md) |

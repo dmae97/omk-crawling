@@ -1,7 +1,7 @@
 {
   "mode": "live",
   "runs": 2,
-  "generated_at": "2026-09-17T03:18:35+0000",
+  "generated_at": "2026-09-18T03:18:28+0000",
   "results": [
     {
       "name": "example.com",
@@ -10,7 +10,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 4.8,
-      "p95_ms": 8.7,
+      "p95_ms": 8.6,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -34,7 +34,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 0.5,
-      "p95_ms": 0.6,
+      "p95_ms": 0.5,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -70,7 +70,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 0.5,
-      "p95_ms": 0.6,
+      "p95_ms": 0.5,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0

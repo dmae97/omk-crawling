@@ -22,23 +22,23 @@ record() {
 
 # Demo 1: Auto-escalation (verbose)
 record "01-auto-escalation" \
-  "cd /home/yu/projects/omk-crawling && python -m omk_crawl.cli https://example.com -v 2>&1 | head -10; sleep 1"
+  "python -m omk_crawl.cli https://example.com -v 2>&1 | head -10; sleep 1"
 
 # Demo 2: Tool discovery
 record "02-tool-discovery" \
-  "cd /home/yu/projects/omk-crawling && python -m omk_crawl.cli --tools; sleep 1"
+  "python -m omk_crawl.cli --tools; sleep 1"
 
 # Demo 3: Diagnose
 record "03-diagnose" \
-  "cd /home/yu/projects/omk-crawling && python -m omk_crawl.cli --diagnose https://example.com; sleep 1"
+  "python -m omk_crawl.cli --diagnose https://example.com; sleep 1"
 
 # Demo 4: JSON output
 record "04-json-output" \
-  "cd /home/yu/projects/omk-crawling && python -m omk_crawl.cli https://example.com --json 2>/dev/null | head -15; sleep 1"
+  "python -m omk_crawl.cli https://example.com --json 2>/dev/null | head -15; sleep 1"
 
 # Demo 5: Python API
 record "05-python-api" \
-  "cd /home/yu/projects/omk-crawling && python3 -c \"
+  "python3 -c \"
 from omk_crawl import crawl
 r = crawl('https://example.com')
 print(r.summary())

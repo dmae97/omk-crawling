@@ -1,7 +1,7 @@
 {
   "mode": "live",
   "runs": 2,
-  "generated_at": "2026-09-26T03:17:46+0000",
+  "generated_at": "2026-09-27T03:19:48+0000",
   "results": [
     {
       "name": "example.com",
@@ -10,7 +10,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 4.8,
-      "p95_ms": 8.7,
+      "p95_ms": 8.5,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -22,7 +22,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 0.5,
-      "p95_ms": 0.6,
+      "p95_ms": 0.5,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -81,7 +81,7 @@
       "url": "https://httpbin.org/",
       "success_at_1": false,
       "success_at_final": false,
-      "p50_ms": 0.5,
+      "p50_ms": 0.6,
       "p95_ms": 0.6,
       "bytes": 0,
       "tool_path": [],

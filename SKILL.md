@@ -131,6 +131,13 @@ npm install crawlee playwright
 # scrcpy:  apt install scrcpy  |  brew install scrcpy  |  choco install scrcpy
 ```
 
+```bash
+# ── macOS ──
+# adb: brew install --cask android-platform-tools
+# .venv는 플랫폼별이므로 리눅스에서 만든 .venv를 mac에서 재사용하지 않고 `python3 -m venv .venv`로 재생성한다.
+# deep evasion(tcp/tls/cdp/props)은 커널 소유 TCP 필드(window scale, 옵션 순서, timestamps)를 적용한 척 하지 않고 unsupported로 보고한다 (전 플랫폼 동일).
+```
+
 ## crawl4ai 빠른 시작 (기본 웹 엔진)
 
 ```python

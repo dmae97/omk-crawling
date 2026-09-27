@@ -65,6 +65,7 @@ metadata:
 | 목표 / 상황 | 1순위 | 참조 |
 | ------------- | ------- | ------ |
 | 차단된 URL **하나**만 열어 본문 확인 (403/WAF/SPA 단발) | `insane-search` | (형제 스킬) |
+| 수집 본문의 CVE를 로컬 악용 저널과 대조 (API 없음) | `omk-jev` `screen` | `~/.omk/agent/skills/omk-jev` |
 | **TLS/JA3 핑거프린트**로 즉시 403 (브라우저 불필요) | **curl-impersonate** / `curl_cffi` | [tools/curl-impersonate.md](references/tools/curl-impersonate.md) |
 | 안티봇 **스텔스** + 정밀 CSS/XPath 반복 + Cloudflare Turnstile | `scrapling` | [tools/scrapling.md](references/tools/scrapling.md) |
 | **DataDome·Kasada·PerimeterX** (행동 기반 벤더) | `nodriver` → `camoufox` | [tools/nodriver.md](references/tools/nodriver.md) |

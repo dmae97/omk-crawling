@@ -1,7 +1,7 @@
 {
   "mode": "live",
   "runs": 2,
-  "generated_at": "2026-10-01T03:23:18+0000",
+  "generated_at": "2026-10-02T03:20:05+0000",
   "results": [
     {
       "name": "example.com",
@@ -9,8 +9,8 @@
       "url": "https://example.com",
       "success_at_1": false,
       "success_at_final": false,
-      "p50_ms": 4.9,
-      "p95_ms": 8.8,
+      "p50_ms": 5.0,
+      "p95_ms": 8.9,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -21,8 +21,8 @@
       "url": "https://httpbin.org/html",
       "success_at_1": false,
       "success_at_final": false,
-      "p50_ms": 0.6,
-      "p95_ms": 0.6,
+      "p50_ms": 0.5,
+      "p95_ms": 0.5,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -45,7 +45,7 @@
       "url": "https://quotes.toscrape.com/",
       "success_at_1": false,
       "success_at_final": false,
-      "p50_ms": 0.5,
+      "p50_ms": 0.6,
       "p95_ms": 0.6,
       "bytes": 0,
       "tool_path": [],
@@ -58,7 +58,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 0.5,
-      "p95_ms": 0.5,
+      "p95_ms": 0.6,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -70,7 +70,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 0.5,
-      "p95_ms": 0.6,
+      "p95_ms": 0.5,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0
@@ -82,7 +82,7 @@
       "success_at_1": false,
       "success_at_final": false,
       "p50_ms": 0.5,
-      "p95_ms": 0.5,
+      "p95_ms": 0.6,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0

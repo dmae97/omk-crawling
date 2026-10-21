@@ -78,8 +78,7 @@ class TestBrowserUseGuards:
         assert t.deadline_s > 0
 
     def test_has_llm_key_false_when_no_env(self, monkeypatch):
-        for v in ("BROWSER_USE_API_KEY", "OPENAI_API_KEY",
-                  "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):
+        for v in ("BROWSER_USE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):
             monkeypatch.delenv(v, raising=False)
         assert BrowserUseTool()._has_llm_key() is False
 

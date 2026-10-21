@@ -33,11 +33,15 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from omk_crawl import __version__, star
 from omk_crawl.detect import available_tools, missing_tools
 from omk_crawl.result import CrawlResult
 from omk_crawl.router import SmartRouter
+
+if TYPE_CHECKING:
+    from omk_crawl.deep import DeepCrawlResult
 
 
 def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None = None) -> None:
@@ -58,6 +62,28 @@ def _print_result(r: CrawlResult, *, as_json: bool = False, output: str | None =
         text = json.dumps(data, ensure_ascii=False, indent=2)
     else:
         text = r.content or r.error or "(empty)"
+
+    if output:
+        Path(output).write_text(text, encoding="utf-8")
+        print(f"Saved {len(text)} chars → {output}")
+    else:
+        print(text)
+
+
+def _print_deep_result(result: DeepCrawlResult, *, as_json: bool, output: str | None) -> None:
+    """Deep crawl report: per-page summaries on stdout, payload to file/JSON."""
+    if as_json:
+        text = json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+    elif output:
+        parts = [f"# omk-crawl deep crawl — {result.seed}\n"]
+        for page in result.pages:
+            if page.ok and page.content:
+                parts.append(f"## {page.url}\n\n{page.content}\n")
+        parts.append(f"\n<!-- {result.summary()} -->\n")
+        text = "\n".join(parts)
+    else:
+        text = "\n".join(page.summary() for page in result.pages)
+        text = (text + "\n\n" + result.summary()) if text else result.summary()
 
     if output:
         Path(output).write_text(text, encoding="utf-8")
@@ -175,6 +201,55 @@ def build_parser() -> argparse.ArgumentParser:
             "audit, and the offline anti-bot score for this URL"
         ),
     )
+    parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="Site crawl: BFS from URL following same-origin links (bounded)",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=20,
+        help="Deep crawl fetch budget (default: 20, requires --deep)",
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=2,
+        help="Deep crawl max link depth from seed (default: 2, requires --deep)",
+    )
+    parser.add_argument(
+        "--sitemap-seed",
+        action="store_true",
+        help="Deep crawl: also seed the frontier from robots.txt sitemaps",
+    )
+    parser.add_argument(
+        "--same-domain",
+        action="store_true",
+        help="Deep crawl: widen scope from same origin to same domain (last two labels)",
+    )
+    parser.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="REGEX",
+        help="Deep crawl: only fetch URLs matching this regex (repeatable)",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="REGEX",
+        help="Deep crawl: skip URLs matching this regex (repeatable)",
+    )
+    parser.add_argument(
+        "--proxy-pool",
+        action="store_true",
+        help=(
+            "Crawl through the free-proxy pool with per-request rotation "
+            "(mutually exclusive with --tool)"
+        ),
+    )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
     parser.add_argument(
         "--star",
@@ -241,6 +316,42 @@ def _main(argv: list[str] | None = None) -> int:
     if args.diagnose:
         print(json.dumps(router.diagnose(target, **tool_kwargs), indent=2))
         return 0
+
+    if args.deep:
+        from omk_crawl.deep import DeepCrawlConfig, deep_crawl
+
+        try:
+            config = DeepCrawlConfig(
+                max_pages=args.max_pages,
+                max_depth=args.depth,
+                same_domain=args.same_domain,
+                include=tuple(args.include),
+                exclude=tuple(args.exclude),
+                use_sitemap=args.sitemap_seed,
+                respect_robots=not args.no_robots,
+            )
+        except ValueError as error:
+            parser.error(str(error))
+        crawl_result = deep_crawl(target, config=config, router=router)
+        _print_deep_result(crawl_result, as_json=args.json, output=args.output)
+        return 0 if crawl_result.stats.pages_ok else 1
+
+    if args.proxy_pool:
+        if args.tool:
+            parser.error("--proxy-pool and --tool are mutually exclusive")
+        from omk_crawl.rotate_crawl import RotationCrawler
+
+        pool_crawler = RotationCrawler()
+        pool_result = pool_crawler.crawl(target)
+        if args.verbose:
+            rotation = pool_result.metadata.get("rotation", {})
+            print(
+                f"\n--- rotation: {rotation.get('attempts', 0)} attempts, "
+                f"{len(rotation.get('proxies', []))} proxies ---\n",
+                file=sys.stderr,
+            )
+        _print_result(pool_result, as_json=args.json, output=args.output)
+        return 0 if pool_result.ok else 1
 
     if args.verbose:
         import logging

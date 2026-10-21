@@ -77,8 +77,7 @@ class ScrcpyTool(BaseTool):
                 markdown=md,
                 fit_markdown=md,
                 extracted=[
-                    {"serial": d.serial, "state": d.state, "model": d.model}
-                    for d in devices
+                    {"serial": d.serial, "state": d.state, "model": d.model} for d in devices
                 ],
                 tool=self.name,
                 elapsed_ms=(time.perf_counter() - t0) * 1000,
@@ -149,9 +148,7 @@ class ScrcpyTool(BaseTool):
             )
 
         if action == "activity":
-            code, out, err = adb_shell(
-                serial, "dumpsys", "activity", "activities", timeout=30.0
-            )
+            code, out, err = adb_shell(serial, "dumpsys", "activity", "activities", timeout=30.0)
             text = out[:120_000]
             md = "# Current activities\n\n```\n" + text + "\n```\n"
             return CrawlResult(
@@ -208,8 +205,7 @@ class ScrcpyTool(BaseTool):
             status=CrawlStatus.ERROR,
             tool=self.name,
             error=(
-                f"Unknown android action '{action}'. "
-                "Use list|packages|dump|activity|screenshot"
+                f"Unknown android action '{action}'. Use list|packages|dump|activity|screenshot"
             ),
             elapsed_ms=(time.perf_counter() - t0) * 1000,
             metadata={**meta, "hint": json.dumps(parts)},

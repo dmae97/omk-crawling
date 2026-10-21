@@ -135,7 +135,7 @@ CDP_TELLS: tuple[Tell, ...] = (
     Tell(
         key="stack_trace_markers",
         probe="(() => { try { throw new Error(); } catch (e) {"
-              " return /puppeteer|playwright|pptr:|cdp\\./i.test(e.stack || ''); } })()",
+        " return /puppeteer|playwright|pptr:|cdp\\./i.test(e.stack || ''); } })()",
         severity="medium",
         why="Injected wrapper frames leak into every stack trace the page can generate.",
     ),
@@ -162,18 +162,17 @@ CDP_TELLS: tuple[Tell, ...] = (
         probe="typeof window.chrome === 'undefined' || typeof chrome.runtime === 'undefined'",
         severity="low",
         why=(
-            "window.chrome exists on every real Chrome page; "
-            "its absence is a strong headless tell."
+            "window.chrome exists on every real Chrome page; its absence is a strong headless tell."
         ),
     ),
     Tell(
         key="webgl_software_renderer",
         probe="(() => { try { const c = document.createElement('canvas');"
-              " const gl = c.getContext('webgl'); if (!gl) return true;"
-              " const d = gl.getExtension('WEBGL_debug_renderer_info'); if (!d) return true;"
-              " return /SwiftShader|llvmpipe|Software/i.test("
-              "String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL))); }"
-              " catch (e) { return true; } })()",
+        " const gl = c.getContext('webgl'); if (!gl) return true;"
+        " const d = gl.getExtension('WEBGL_debug_renderer_info'); if (!d) return true;"
+        " return /SwiftShader|llvmpipe|Software/i.test("
+        "String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL))); }"
+        " catch (e) { return true; } })()",
         severity="medium",
         why="SwiftShader/llvmpipe renderers betray a GPU-less headless host.",
     ),
@@ -548,13 +547,7 @@ def patch_js(plan: PatchPlan) -> str:
     The single closure keeps every helper out of the global object, so the patch
     adds no new fingerprintable surface of its own.
     """
-    return (
-        "(() => {\n  'use strict';\n"
-        + BOOTSTRAP
-        + "\n\n"
-        + patch_body(plan)
-        + "\n})();"
-    )
+    return "(() => {\n  'use strict';\n" + BOOTSTRAP + "\n\n" + patch_body(plan) + "\n})();"
 
 
 def full_script(plan: PatchPlan, spec: BrowserPropertySpec) -> str:

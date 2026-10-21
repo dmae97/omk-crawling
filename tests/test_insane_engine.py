@@ -138,7 +138,7 @@ def test_availability_does_not_confuse_builtin_adapter_with_sdk(monkeypatch):
     monkeypatch.setattr(
         detect.importlib.util,
         "find_spec",
-        lambda name: (SimpleNamespace() if name.startswith("omk_crawl") else None),
+        lambda name: SimpleNamespace() if name.startswith("omk_crawl") else None,
     )
     assert not detect.tool_available("insane_search")
     assert not get_tool("insane_search").available()

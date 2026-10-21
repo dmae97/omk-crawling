@@ -675,7 +675,9 @@ class TestCaptchaPolicy:
         assert plan.action == "clearance_flow"
 
     def test_plan_serializes(self):
-        assert json.dumps(resolve_challenge(classify_captcha(_TURNSTILE), "https://x.test").to_dict())
+        assert json.dumps(
+            resolve_challenge(classify_captcha(_TURNSTILE), "https://x.test").to_dict()
+        )
 
 
 class TestSolverBackends:

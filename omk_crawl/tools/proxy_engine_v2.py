@@ -34,6 +34,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     import aiohttp  # pyright: ignore[reportMissingImports]  # noqa: F401 — annotations only
@@ -41,9 +42,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger("omk_crawl.proxy_engine_v2")
 
 # ── Paths ──
-CACHE_DIR = Path(os.environ.get("OMK_CACHE_DIR", "/home/yu/projects/omk-crawling/.crawl_cache"))
+# Project-relative by default (the historical absolute path belonged to another
+# machine); OMK_CACHE_DIR still wins.
+CACHE_DIR = Path(os.environ.get("OMK_CACHE_DIR", ".crawl_cache"))
 POOL_CACHE = CACHE_DIR / "proxy_pool_v2.json"
 BURNED_CACHE = CACHE_DIR / "burned_proxies_v2.json"
+
+# ── Freshness ("newest first") ──
+# Proxies older than this lose score rank; fresh_only selection excludes them.
+STALE_SECONDS = float(os.environ.get("OMK_PROXY_STALE_SECONDS", "3600"))
 
 # ── Validation target: Firebase Auth API (actual attack surface) ──
 # The web API key comes from the environment — credentials are never hardcoded.
@@ -109,6 +116,16 @@ class ProxyNode:
     use_count: int = 0
     backoff_until: float = 0.0  # per-proxy rate limit cooldown
     tls_profile: str = ""  # assigned TLS fingerprint
+    harvested_at: float = 0.0  # last time a source list re-served this proxy
+    source: str = ""  # which free list served it
+
+    @property
+    def is_stale(self) -> bool:
+        """No source re-served it and no validation happened within the window."""
+        ref = self.harvested_at or self.last_validated
+        if ref <= 0:
+            return True  # unknown age: treat as stale (fresh-first policy)
+        return (time.time() - ref) > STALE_SECONDS
 
     @property
     def score(self) -> float:
@@ -119,7 +136,16 @@ class ProxyNode:
         latency_penalty = self.latency_ms / 5000.0
         geo_bonus = 1.0 if self.country in PREFERRED_GEOS else 0.0
         geo_penalty = 2.0 if self.country in AVOID_GEOS else 0.0
-        total = base + success_bonus - fail_penalty - latency_penalty + geo_bonus - geo_penalty
+        stale_penalty = 1.5 if self.is_stale else 0.0
+        total = (
+            base
+            + success_bonus
+            - fail_penalty
+            - latency_penalty
+            + geo_bonus
+            - geo_penalty
+            - stale_penalty
+        )
         return max(0, total)
 
     @property
@@ -167,6 +193,8 @@ class ProxyNode:
             "fail_count": self.fail_count,
             "consecutive_fails": self.consecutive_fails,
             "use_count": self.use_count,
+            "harvested_at": self.harvested_at,
+            "source": self.source,
         }
 
     @classmethod
@@ -185,19 +213,26 @@ class ProxyEngineV2:
         self._min_pool_size = min_pool_size
         self._harvest_lock = asyncio.Lock()
         self._tls_idx = 0
-        self._has_ipv6 = self._check_ipv6()
+        self._ipv6_checked = False
+        self._ipv6_cache = False
         self._load_cache()
-        ipv6 = "yes" if self._has_ipv6 else "no"
-        logger.info(f"ProxyEngine v2 initialized: {len(self._pool)} cached, IPv6={ipv6}")
+        logger.info(f"ProxyEngine v2 initialized: {len(self._pool)} cached")
+
+    # ── IPv6 detection (lazy: never on the constructor's critical path) ──
+    @property
+    def has_ipv6(self) -> bool:
+        if not self._ipv6_checked:
+            self._ipv6_cache = self._check_ipv6()
+            self._ipv6_checked = True
+        return self._ipv6_cache
 
     # ── IPv6 detection ──
     @staticmethod
     def _check_ipv6() -> bool:
         try:
-            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            s.settimeout(2)
-            s.connect(("2001:4860:4860::8888", 53))  # Google DNS IPv6
-            s.close()
+            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+                sock.settimeout(2)
+                sock.connect(("2001:4860:4860::8888", 53))  # Google DNS IPv6
             return True
         except Exception:
             return False
@@ -244,26 +279,46 @@ class ProxyEngineV2:
                 if isinstance(r, list):
                     new_nodes.extend(r)
 
-        # Deduplicate and filter
-        added = 0
-        with self._lock:
-            existing = {n.url for n in self._pool}
-            for node in new_nodes:
-                h = self._hash(node.url)
-                if node.url not in existing and h not in self._burned:
-                    # Assign TLS profile
-                    node.tls_profile = TLS_PROFILES[self._tls_idx % len(TLS_PROFILES)]
-                    self._tls_idx += 1
-                    self._pool.append(node)
-                    existing.add(node.url)
-                    added += 1
-            # Keep top 3000 by score
-            self._pool.sort(key=lambda x: x.score, reverse=True)
-            self._pool = self._pool[:3000]
+        # Deduplicate, skip burned, and bump freshness of known URLs.
+        added = self._ingest(new_nodes)
 
         if added > 0:
             self._save_cache()
         logger.info(f"Harvested {added} new proxies (pool: {len(self._pool)})")
+        return added
+
+    def _ingest(self, nodes: list[ProxyNode]) -> int:
+        """Merge harvested nodes into the pool; returns the newly added count.
+
+        A source re-serving a known proxy is a freshness signal: bump its
+        ``harvested_at`` instead of duplicating it. Burned URLs never return.
+        """
+        now = time.time()
+        added = 0
+        with self._lock:
+            existing = {n.url: n for n in self._pool}
+            for node in nodes:
+                known = existing.get(node.url)
+                if known is not None:
+                    # A source re-serving this proxy is a freshness observation
+                    # made now — touch it (never move backward).
+                    known.harvested_at = max(known.harvested_at, now)
+                    if node.source and node.source != known.source:
+                        known.source = node.source
+                    continue
+                if self._hash(node.url) in self._burned:
+                    continue
+                # Assign TLS profile
+                node.tls_profile = TLS_PROFILES[self._tls_idx % len(TLS_PROFILES)]
+                self._tls_idx += 1
+                if node.harvested_at <= 0:
+                    node.harvested_at = now
+                self._pool.append(node)
+                existing[node.url] = node
+                added += 1
+            # Keep top 3000 by score
+            self._pool.sort(key=lambda x: x.score, reverse=True)
+            self._pool = self._pool[:3000]
         return added
 
     async def _fetch_source(self, session: aiohttp.ClientSession, url: str) -> list[ProxyNode]:
@@ -275,18 +330,38 @@ class ProxyEngineV2:
         except Exception:
             return []
 
+    @staticmethod
+    def _protocol_from_source(source_url: str) -> str:
+        """List type from filename/query markers — the URL scheme (https://)
+        is transport, not a proxy protocol."""
+        lowered = source_url.lower()
+        parts = urlsplit(lowered)
+        name = parts.path.rsplit("/", 1)[-1]
+        query = parts.query
+        if "protocol=socks5" in query or "type=socks5" in query or "socks5" in name:
+            return "socks5"
+        if "protocol=socks4" in query or "type=socks4" in query or "socks4" in name:
+            return "socks4"
+        if "https" in name:  # e.g. HTTPS_RAW.txt, https.txt
+            return "https"
+        if (
+            "http" in name
+            or "protocol=http" in query
+            or "type=http" in query
+            or "protocols=http" in query
+        ):
+            return "http"
+        if "socks5" in lowered:  # e.g. /socks5_list/ in the path
+            return "socks5"
+        if "socks4" in lowered:
+            return "socks4"
+        return "http"
+
     def _parse_proxies(self, text: str, source_url: str) -> list[ProxyNode]:
         """Parse proxy list text into ProxyNode objects."""
         nodes: list[ProxyNode] = []
-        # Detect protocol from source URL
-        if "socks5" in source_url.lower():
-            proto = "socks5"
-        elif "socks4" in source_url.lower():
-            proto = "socks4"
-        elif "https" in source_url.lower():
-            proto = "https"
-        else:
-            proto = "http"
+        proto = self._protocol_from_source(source_url)
+        harvested = time.time()
 
         for line in text.strip().splitlines():
             line = line.strip()
@@ -301,7 +376,14 @@ class ProxyEngineV2:
                         try:
                             port = int(port_str)
                             if 1 <= port <= 65535:
-                                nodes.append(ProxyNode(url=f"{ip}:{port}", protocol=proto))
+                                nodes.append(
+                                    ProxyNode(
+                                        url=f"{ip}:{port}",
+                                        protocol=proto,
+                                        harvested_at=harvested,
+                                        source=source_url,
+                                    )
+                                )
                         except ValueError:
                             continue
         return nodes
@@ -312,12 +394,12 @@ class ProxyEngineV2:
 
     # ── Validation (against Firebase API) ──
     async def validate_batch(self, batch_size: int = 50, target: str = "firebase") -> int:
+        """Validate proxies against the actual attack target."""
         if target == "firebase" and not VALIDATE_KEY:
             raise RuntimeError(
                 "firebase proxy validation requires OMK_PROXY_VALIDATE_KEY in the "
                 "environment (no API key is hardcoded in source)"
             )
-        """Validate proxies against the actual attack target."""
         with self._lock:
             candidates = [
                 n
@@ -345,7 +427,14 @@ class ProxyEngineV2:
     async def _validate_one(self, node: ProxyNode, target: str) -> bool:
         """Validate a single proxy against the target API."""
         import aiohttp  # pyright: ignore[reportMissingImports]  # lazy: optional dep, live validation only
-        from aiohttp_socks import ProxyConnector
+
+        try:
+            from aiohttp_socks import ProxyConnector  # pyright: ignore[reportMissingImports]
+        except ImportError:
+            logger.warning("aiohttp_socks missing — SOCKS proxies cannot be validated")
+            node.mark_failure()
+            node.last_validated = time.time()
+            return False
 
         ts = time.time()
         try:
@@ -421,8 +510,13 @@ class ProxyEngineV2:
                 return False
 
     # ── Scheduling ──
-    def next(self, exclude: set[str] | None = None) -> ProxyNode | None:
-        """Get the best available proxy node."""
+    def next(self, exclude: set[str] | None = None, fresh_only: bool = False) -> ProxyNode | None:
+        """Get the best available proxy node.
+
+        ``fresh_only`` restricts selection to proxies a source re-served (or a
+        validation touched) within ``STALE_SECONDS`` — newest-first. Falls
+        back to the whole pool when nothing is fresh.
+        """
         with self._lock:
             available = [
                 n
@@ -431,6 +525,10 @@ class ProxyEngineV2:
                 and self._hash(n.url) not in self._burned
                 and (exclude is None or n.url not in exclude)
             ]
+            if fresh_only:
+                fresh = [n for n in available if not n.is_stale]
+                if fresh:
+                    available = fresh
             if not available:
                 # Reset use counts for non-burned proxies
                 for n in self._pool:
@@ -453,11 +551,13 @@ class ProxyEngineV2:
             return available[0]
 
     def burn(self, node: ProxyNode):
-        """Permanently remove a proxy."""
+        """Permanently remove a proxy (persisted — a burned proxy must survive
+        restarts, or the next cache load resurrects a known-bad endpoint)."""
         h = self._hash(node.url)
         with self._lock:
             self._burned.add(h)
             self._pool = [n for n in self._pool if self._hash(n.url) != h]
+        self._save_cache()
 
     # ── Auto-refresh ──
     async def ensure_pool(self, min_available: int | None = None):
@@ -490,6 +590,6 @@ class ProxyEngineV2:
                     "socks5": sum(1 for n in available if n.protocol == "socks5"),
                     "socks4": sum(1 for n in available if n.protocol == "socks4"),
                 },
-                "ipv6": self._has_ipv6,
+                "ipv6": self.has_ipv6,
                 "top_countries": list(set(n.country for n in available[:30] if n.country))[:10],
             }

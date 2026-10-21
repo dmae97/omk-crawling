@@ -263,4 +263,4 @@ __all__ = [
     "trend_to_tweets",
     "trending_with_content",
 ]
-__version__ = "2.14.0"
+__version__ = "2.16.0"

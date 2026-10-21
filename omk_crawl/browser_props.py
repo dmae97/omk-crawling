@@ -494,9 +494,9 @@ def _spoof_body(spec: BrowserPropertySpec) -> str:
       return _getParameter.apply(this, [p]);
     }}, 'getParameter', 1));
 
-{_CANVAS_NOISE_JS.replace('CANVAS_SEED', str(spec.canvas_noise))}
+{_CANVAS_NOISE_JS.replace("CANVAS_SEED", str(spec.canvas_noise))}
 
-{_AUDIO_NOISE_JS.replace('AUDIO_SEED', str(spec.audio_noise))}
+{_AUDIO_NOISE_JS.replace("AUDIO_SEED", str(spec.audio_noise))}
 """.strip("\n")
 
 

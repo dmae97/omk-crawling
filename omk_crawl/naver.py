@@ -91,22 +91,32 @@ class NaverLandClient:
             retryable_statuses=frozenset({429, 500, 502, 503}),
         )
 
-    def _get(self, url: str, params: dict[str, Any] | None = None,
-             referer: str = "https://new.land.naver.com/") -> NaverResult:
+    def _get(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        referer: str = "https://new.land.naver.com/",
+    ) -> NaverResult:
         from curl_cffi import requests as cffi
 
         cache_key = f"{url}?{json.dumps(params or {}, sort_keys=True)}"
         cached = self.cache.get(cache_key)
         if cached:
-            return NaverResult(ok=True, endpoint=url, status_code=cached.get("_code", 200),
-                               data=cached.get("data"))
+            return NaverResult(
+                ok=True, endpoint=url, status_code=cached.get("_code", 200), data=cached.get("data")
+            )
 
         self.bucket.acquire()
         headers = {**NAVER_HEADERS, "Referer": referer}
 
         def do_request() -> NaverResult:
-            resp = cffi.get(url, params=params, headers=headers,
-                            impersonate="chrome124", timeout=self.cfg.timeout)
+            resp = cffi.get(
+                url,
+                params=params,
+                headers=headers,
+                impersonate="chrome124",
+                timeout=self.cfg.timeout,
+            )
             try:
                 data = resp.json()
             except Exception:
@@ -115,16 +125,16 @@ class NaverLandClient:
             if resp.status_code < 400:
                 self.cache.put(cache_key, {"_code": resp.status_code, "data": data})
                 return NaverResult(ok=True, endpoint=url, status_code=resp.status_code, data=data)
-            return NaverResult(ok=False, endpoint=url, status_code=resp.status_code,
-                               error=str(data)[:200])
+            return NaverResult(
+                ok=False, endpoint=url, status_code=resp.status_code, error=str(data)[:200]
+            )
 
         try:
             return retry(do_request, policy=self.retry_policy)
         except Exception as exc:
             return NaverResult(ok=False, endpoint=url, error=str(exc)[:200])
 
-    def complexes(self, cortar_no: str, zoom: int = 16,
-                  price_type: str = "RETAIL") -> NaverResult:
+    def complexes(self, cortar_no: str, zoom: int = 16, price_type: str = "RETAIL") -> NaverResult:
         """Get apartment/complex markers for a district.
 
         Args:
@@ -132,9 +142,14 @@ class NaverLandClient:
             zoom: Map zoom level (default 16).
             price_type: RETAIL=매매, JEONSE=전세.
         """
-        return self._get(LAND_COMPLEXES, params={
-            "cortarNo": cortar_no, "zoom": zoom, "priceType": price_type,
-        })
+        return self._get(
+            LAND_COMPLEXES,
+            params={
+                "cortarNo": cortar_no,
+                "zoom": zoom,
+                "priceType": price_type,
+            },
+        )
 
     def cortar_info(self, cortar_no: str) -> NaverResult:
         """Get district info."""
@@ -175,13 +190,15 @@ class NaverCafeClient:
     MAIN_API = "https://apis.naver.com/cafe-web/cafe-cafemain-api/v1.0"
     FE_BASE = "https://cafe.naver.com/f-e/cafes"
 
-    def __init__(self, config: NaverConfig | None = None,
-                 user_cookies: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, config: NaverConfig | None = None, user_cookies: dict[str, str] | None = None
+    ) -> None:
         self.cfg = config or NaverConfig()
         self.bucket = TokenBucket(rate=self.cfg.rate, capacity=self.cfg.burst)
         self.cache = ResponseCache(cache_dir=self.cfg.cache_dir, ttl=self.cfg.cache_ttl)
         self.retry_policy = RetryPolicy(
-            max_retries=self.cfg.max_retries, base_delay=2.0,
+            max_retries=self.cfg.max_retries,
+            base_delay=2.0,
             retryable_statuses=frozenset({429, 500, 502, 503}),
         )
         self._cookies = user_cookies
@@ -191,10 +208,15 @@ class NaverCafeClient:
     def fetcher(self):
         if self._fetcher is None:
             from omk_crawl.adaptive import AdaptiveConfig, AdaptiveFetcher
-            self._fetcher = AdaptiveFetcher(AdaptiveConfig(
-                rate=self.cfg.rate, burst=self.cfg.burst,
-                timeout=self.cfg.timeout, user_cookies=self._cookies,
-            ))
+
+            self._fetcher = AdaptiveFetcher(
+                AdaptiveConfig(
+                    rate=self.cfg.rate,
+                    burst=self.cfg.burst,
+                    timeout=self.cfg.timeout,
+                    user_cookies=self._cookies,
+                )
+            )
         return self._fetcher
 
     # ── session (YOUR OWN account) ────────────────────────────
@@ -215,17 +237,19 @@ class NaverCafeClient:
         Works only with YOUR OWN valid session — never forges credentials.
         """
         if not self._cookies:
-            return NaverResult(ok=False, endpoint="session",
-                               error="no cookies injected")
+            return NaverResult(ok=False, endpoint="session", error="no cookies injected")
         r = self.fetcher.fetch_json_api(
             "https://apis.naver.com/cafe-web/cafe-myapi/v1/my/profile",
             headers=self._api_headers(),
         )
         if r.ok and r.json_data:
-            return NaverResult(ok=True, endpoint=r.url, status_code=r.status_code,
-                               data=r.json_data)
-        return NaverResult(ok=False, endpoint=r.url, status_code=r.status_code,
-                           error="session not logged in or expired")
+            return NaverResult(ok=True, endpoint=r.url, status_code=r.status_code, data=r.json_data)
+        return NaverResult(
+            ok=False,
+            endpoint=r.url,
+            status_code=r.status_code,
+            error="session not logged in or expired",
+        )
 
     def can_access(self, club_id: str) -> NaverResult:
         """Check whether YOUR session can read a (possibly private) cafe.
@@ -236,11 +260,18 @@ class NaverCafeClient:
         """
         r = self.menus(club_id)
         if r.ok and r.data:
-            return NaverResult(ok=True, endpoint=r.endpoint, status_code=r.status_code,
-                               data={"accessible": True, "menus": r.data})
-        return NaverResult(ok=False, endpoint=r.endpoint, status_code=r.status_code,
-                           error="not accessible with this session "
-                                 "(not a member, or login required)")
+            return NaverResult(
+                ok=True,
+                endpoint=r.endpoint,
+                status_code=r.status_code,
+                data={"accessible": True, "menus": r.data},
+            )
+        return NaverResult(
+            ok=False,
+            endpoint=r.endpoint,
+            status_code=r.status_code,
+            error="not accessible with this session (not a member, or login required)",
+        )
 
     def _api_headers(self) -> dict[str, str]:
         return {
@@ -255,8 +286,9 @@ class NaverCafeClient:
         cache_key = f"{url}?{json.dumps(params or {}, sort_keys=True)}"
         cached = self.cache.get(cache_key)
         if cached:
-            return NaverResult(ok=True, endpoint=url,
-                               status_code=cached.get("_code", 200), data=cached.get("data"))
+            return NaverResult(
+                ok=True, endpoint=url, status_code=cached.get("_code", 200), data=cached.get("data")
+            )
 
         self.bucket.acquire()
 
@@ -265,10 +297,14 @@ class NaverCafeClient:
             if r.ok and r.json_data is not None:
                 self.cache.put(cache_key, {"_code": r.status_code, "data": r.json_data})
                 return NaverResult(
-                    ok=True, endpoint=url, status_code=r.status_code, data=r.json_data,
+                    ok=True,
+                    endpoint=url,
+                    status_code=r.status_code,
+                    data=r.json_data,
                 )
-            return NaverResult(ok=False, endpoint=url, status_code=r.status_code,
-                               error=r.error or "empty")
+            return NaverResult(
+                ok=False, endpoint=url, status_code=r.status_code, error=r.error or "empty"
+            )
 
         try:
             return retry(do_request, policy=self.retry_policy)
@@ -281,8 +317,14 @@ class NaverCafeClient:
         """Get the cafe's menu (board) list with menuIds."""
         return self._get_api(f"{self.MAIN_API}/cafes/{club_id}/menus")
 
-    def articles(self, club_id: str, menu_id: int | str = 0, page: int = 1,
-                 page_size: int = 15, sort_by: str = "TIME") -> NaverResult:
+    def articles(
+        self,
+        club_id: str,
+        menu_id: int | str = 0,
+        page: int = 1,
+        page_size: int = 15,
+        sort_by: str = "TIME",
+    ) -> NaverResult:
         """Get article list for a cafe board.
 
         Args:
@@ -293,9 +335,15 @@ class NaverCafeClient:
             sort_by: TIME | READ | COMMENT | LIKE.
         """
         url = f"{self.BOARD_API}/cafes/{club_id}/menus/{menu_id}/articles"
-        return self._get_api(url, params={
-            "page": page, "pageSize": page_size, "sortBy": sort_by, "viewType": "L",
-        })
+        return self._get_api(
+            url,
+            params={
+                "page": page,
+                "pageSize": page_size,
+                "sortBy": sort_by,
+                "viewType": "L",
+            },
+        )
 
     def notices(self, club_id: str) -> NaverResult:
         """Get pinned notices."""
@@ -305,9 +353,14 @@ class NaverCafeClient:
         """Get popular articles."""
         return self._get_api(f"{self.BOARD_API}/cafes/{club_id}/uparticles/menus/0")
 
-    def crawl_articles(self, club_id: str, menu_id: int | str = 0,
-                       max_pages: int = 5, page_size: int = 15,
-                       on_page: Any = None) -> list[dict[str, Any]]:
+    def crawl_articles(
+        self,
+        club_id: str,
+        menu_id: int | str = 0,
+        max_pages: int = 5,
+        page_size: int = 15,
+        on_page: Any = None,
+    ) -> list[dict[str, Any]]:
         """Crawl multiple pages of articles with polite pacing.
 
         Args:
@@ -349,17 +402,22 @@ class NaverCafeClient:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 ctx_kwargs: dict[str, Any] = {
-                    "user_agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                   "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"),
-                    "locale": "ko-KR", "viewport": {"width": 1280, "height": 1000},
+                    "user_agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    "locale": "ko-KR",
+                    "viewport": {"width": 1280, "height": 1000},
                 }
                 context = browser.new_context(**ctx_kwargs)
                 if self._cookies:
                     domain = "cafe.naver.com"
-                    context.add_cookies([
-                        {"name": k, "value": v, "domain": domain, "path": "/"}
-                        for k, v in self._cookies.items()
-                    ])
+                    context.add_cookies(
+                        [
+                            {"name": k, "value": v, "domain": domain, "path": "/"}
+                            for k, v in self._cookies.items()
+                        ]
+                    )
                 page = context.new_page()
                 page.goto(url, wait_until="networkidle", timeout=self.cfg.timeout * 2000)
                 page.wait_for_timeout(3500)
@@ -379,8 +437,9 @@ class NaverCafeClient:
 
             content = self._pick_article_body(frame_texts)
             if content:
-                return NaverResult(ok=True, endpoint=url, status_code=200,
-                                   data={"content": content})
+                return NaverResult(
+                    ok=True, endpoint=url, status_code=200, data={"content": content}
+                )
             return NaverResult(ok=False, endpoint=url, error="content not extracted")
         except Exception as e:
             return NaverResult(ok=False, endpoint=url, error=str(e)[:200])
@@ -424,28 +483,31 @@ class NaverCafeClient:
         for entry in raw:
             it = entry.get("item", entry)
             writer = it.get("writerInfo", {})
-            out.append({
-                "article_id": it.get("articleId"),
-                "cafe_id": it.get("cafeId"),
-                "subject": it.get("subject", ""),
-                "summary": it.get("summary", ""),
-                "author": writer.get("nickName", ""),
-                "author_level": writer.get("memberLevelName", ""),
-                "menu_name": it.get("menuName", ""),
-                "write_ts": it.get("writeDateTimestamp"),
-                "read_count": it.get("readCount", 0),
-                "comment_count": it.get("commentCount", 0),
-                "like_count": it.get("likeCount", 0),
-                "has_image": it.get("hasImage", False),
-                "represent_image": it.get("representImage", ""),
-                "url": f"https://cafe.naver.com/f-e/cafes/{it.get('cafeId')}/articles/{it.get('articleId')}",
-            })
+            out.append(
+                {
+                    "article_id": it.get("articleId"),
+                    "cafe_id": it.get("cafeId"),
+                    "subject": it.get("subject", ""),
+                    "summary": it.get("summary", ""),
+                    "author": writer.get("nickName", ""),
+                    "author_level": writer.get("memberLevelName", ""),
+                    "menu_name": it.get("menuName", ""),
+                    "write_ts": it.get("writeDateTimestamp"),
+                    "read_count": it.get("readCount", 0),
+                    "comment_count": it.get("commentCount", 0),
+                    "like_count": it.get("likeCount", 0),
+                    "has_image": it.get("hasImage", False),
+                    "represent_image": it.get("representImage", ""),
+                    "url": f"https://cafe.naver.com/f-e/cafes/{it.get('cafeId')}/articles/{it.get('articleId')}",
+                }
+            )
         return out
 
     @staticmethod
     def parse_article_content(html: str) -> str:
         """Extract article body text from rendered HTML (fallback)."""
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup(html, "html.parser")
         el = soup.select_one(
             ".se-main-container, #tbody, .article_content, [class*='article-body'], main"

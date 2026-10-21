@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omk-crawl"
-version = "2.14.0"
+version = "2.16.0"
 description = "Smart crawling toolbox — web auto-escalation, anti-detect browsers, fingerprint coherence, session warm-up, adaptive API discovery, Android/iOS surfaces"
 readme = "README.md"
 license = "Apache-2.0"
@@ -49,6 +49,8 @@ browser = ["browser-use>=0.13,<1"]
 autoscraper = ["autoscraper>=1.1,<2"]
 markitdown = ["markitdown[all]>=0.1,<1"]
 selectolax = ["selectolax>=0.3,<1"]
+# Free-proxy pool: harvest/validate (aiohttp) + SOCKS validation (aiohttp-socks)
+proxy = ["aiohttp>=3.9,<4", "aiohttp-socks>=0.9,<1"]
 # Target clients (Naver Cafe/Land, Baemin) — TLS impersonation + parsing + rendering
 targets = [
   "curl_cffi>=0.15,<1",
@@ -73,6 +75,8 @@ all = [
   "autoscraper>=1.1,<2",
   "markitdown[all]>=0.1,<1",
   "selectolax>=0.3,<1",
+  "aiohttp>=3.9,<4",
+  "aiohttp-socks>=0.9,<1",
   "beautifulsoup4>=4.12,<5",
   "charset-normalizer>=3,<4",
   "httpx>=0.27,<1",

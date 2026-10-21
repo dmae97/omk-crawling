@@ -17,6 +17,7 @@ from omk_crawl.tools.ipa_tool import IpaTool
 from omk_crawl.tools.markitdown_tool import MarkitdownTool
 from omk_crawl.tools.nodriver_tool import NodriverTool
 from omk_crawl.tools.patchright_tool import PatchrightTool
+from omk_crawl.tools.proxy_pool_tool import ProxyPoolTool
 from omk_crawl.tools.reddit_tool import RedditTool
 from omk_crawl.tools.scrapling_tool import ScraplingTool
 from omk_crawl.tools.scrcpy_tool import ScrcpyTool
@@ -52,6 +53,8 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
     "markitdown": MarkitdownTool,
     "har": HarTool,
     "baemin": BaeminTool,
+    "proxy_pool": ProxyPoolTool,
+    "proxy": ProxyPoolTool,  # alias — omk-crawl proxy://…
     "reddit": RedditTool,
     # Mobile / native (layer 5)
     "apk": ApkTool,

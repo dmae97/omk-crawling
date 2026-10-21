@@ -82,10 +82,27 @@ class SessionPhase:
 # Keys a human mistypes *to* when aiming at a neighbouring key. Used to keep
 # typos plausible rather than uniformly random.
 _NEIGHBOURS: dict[str, str] = {
-    "a": "s", "s": "d", "d": "f", "f": "g", "g": "h", "h": "j",
-    "q": "w", "w": "e", "e": "r", "r": "t", "t": "y", "y": "u",
-    "z": "x", "x": "c", "c": "v", "v": "b", "b": "n",
-    "1": "2", "2": "3", "3": "4", "4": "5",
+    "a": "s",
+    "s": "d",
+    "d": "f",
+    "f": "g",
+    "g": "h",
+    "h": "j",
+    "q": "w",
+    "w": "e",
+    "e": "r",
+    "r": "t",
+    "t": "y",
+    "y": "u",
+    "z": "x",
+    "x": "c",
+    "c": "v",
+    "v": "b",
+    "b": "n",
+    "1": "2",
+    "2": "3",
+    "3": "4",
+    "4": "5",
 }
 
 

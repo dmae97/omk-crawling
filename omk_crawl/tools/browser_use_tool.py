@@ -17,7 +17,10 @@ from omk_crawl.tools.base import BaseTool
 # LLM providers browser-use can drive. If none is configured the tool cannot
 # run, so we exclude it from the escalation chain rather than burn the budget.
 _LLM_KEY_VARS = (
-    "BROWSER_USE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY",
+    "BROWSER_USE_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GOOGLE_API_KEY",
 )
 
 
@@ -74,11 +77,15 @@ class BrowserUseTool(BaseTool):
         # Dry-run: report the guardrails without spending anything.
         if kwargs.get("dry_run"):
             return CrawlResult(
-                url=url, status=CrawlStatus.ERROR, tool=self.name,
+                url=url,
+                status=CrawlStatus.ERROR,
+                tool=self.name,
                 error="dry-run: browser-use not executed",
                 metadata={
-                    "dry_run": True, "model": self.model,
-                    "max_steps": self.max_steps, "max_cost_usd": self.max_cost_usd,
+                    "dry_run": True,
+                    "model": self.model,
+                    "max_steps": self.max_steps,
+                    "max_cost_usd": self.max_cost_usd,
                     "deadline_s": self.deadline_s,
                 },
             )
@@ -113,27 +120,29 @@ class BrowserUseTool(BaseTool):
             # Time cap: abort the whole agent run past the deadline.
             coro = agent.run(max_steps=kwargs.get("max_steps", self.max_steps))
             history = await asyncio.wait_for(
-                coro, timeout=kwargs.get("deadline_s", self.deadline_s),
+                coro,
+                timeout=kwargs.get("deadline_s", self.deadline_s),
             )
 
             content = history.final_result() or ""
 
             # Cost cap: browser-use tracks cumulative cost on the history.
             cost = getattr(history, "total_cost", None)
-            if (
-                self.max_cost_usd is not None and cost is not None
-                and cost > self.max_cost_usd
-            ):
+            if self.max_cost_usd is not None and cost is not None and cost > self.max_cost_usd:
                 return CrawlResult(
-                    url=url, status=CrawlStatus.ERROR, tool=self.name,
+                    url=url,
+                    status=CrawlStatus.ERROR,
+                    tool=self.name,
                     elapsed_ms=stop(),
                     error=f"cost cap exceeded: ${cost:.4f} > ${self.max_cost_usd}",
                     metadata={"failure_class": "model", "cost_usd": cost},
                 )
 
             meta = {
-                "model": self.model, "agent": True,
-                "max_steps": self.max_steps, "deadline_s": self.deadline_s,
+                "model": self.model,
+                "agent": True,
+                "max_steps": self.max_steps,
+                "deadline_s": self.deadline_s,
             }
             if cost is not None:
                 meta["cost_usd"] = cost

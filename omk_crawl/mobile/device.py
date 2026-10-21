@@ -78,9 +78,7 @@ def adb_shell(
         return 127, "", "adb not found"
     cmd = [bin_path, "-s", serial, "shell", *args]
     try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
         return proc.returncode, proc.stdout or "", proc.stderr or ""
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 1, "", str(exc)

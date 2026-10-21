@@ -186,7 +186,8 @@ class TestStarNow:
     def test_gh_failure_is_false(self, monkeypatch):
         monkeypatch.setattr(star.shutil, "which", lambda _: "/usr/bin/gh")
         monkeypatch.setattr(
-            star.subprocess, "run",
+            star.subprocess,
+            "run",
             lambda *a, **k: (_ for _ in ()).throw(OSError("no gh")),
         )
         assert star._star_via_gh() is False

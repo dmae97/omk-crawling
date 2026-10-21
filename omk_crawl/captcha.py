@@ -125,8 +125,13 @@ _CLEARABLE: frozenset[CaptchaKind] = frozenset(
 _MARKERS: tuple[tuple[CaptchaKind, tuple[str, ...]], ...] = (
     (
         CaptchaKind.IMAGE_GRID,
-        ("rc-imageselect", "imageselect-table", "challenge-container",
-         "select all images", "select all squares"),
+        (
+            "rc-imageselect",
+            "imageselect-table",
+            "challenge-container",
+            "select all images",
+            "select all squares",
+        ),
     ),
     (
         CaptchaKind.PRESS_HOLD,
@@ -134,8 +139,14 @@ _MARKERS: tuple[tuple[CaptchaKind, tuple[str, ...]], ...] = (
     ),
     (
         CaptchaKind.SLIDER,
-        ("geetest_slider", "nc_1_n1z", "yidun_intelli", "slidercaptcha",
-         "drag the slider", "slide to verify"),
+        (
+            "geetest_slider",
+            "nc_1_n1z",
+            "yidun_intelli",
+            "slidercaptcha",
+            "drag the slider",
+            "slide to verify",
+        ),
     ),
     (
         CaptchaKind.TURNSTILE,
@@ -160,8 +171,7 @@ _MARKERS: tuple[tuple[CaptchaKind, tuple[str, ...]], ...] = (
     (CaptchaKind.KASADA, ("x-kpsdk", "/ips.js")),
     (
         CaptchaKind.AWS_WAF,
-        ("awswafcookiedomainlist", "aws-waf-token", "challenge.js",
-         "awswaf", "captcha.awswaf.com"),
+        ("awswafcookiedomainlist", "aws-waf-token", "challenge.js", "awswaf", "captcha.awswaf.com"),
     ),
 )
 
@@ -186,7 +196,7 @@ _CHALLENGE_HINTS: tuple[str, ...] = (
 _SITEKEY_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r'data-sitekey=["\']([A-Za-z0-9_\-]{8,})["\']'),
     re.compile(r'sitekey["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{8,})["\']'),
-    re.compile(r'render=([A-Za-z0-9_\-]{8,})'),
+    re.compile(r"render=([A-Za-z0-9_\-]{8,})"),
 )
 
 _ACTION_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -484,9 +494,7 @@ class HttpSolver(SolverBackend):
             backend=self.name,
             token=str(token),
             cookies=(
-                {str(k): str(v) for k, v in cookies.items()}
-                if isinstance(cookies, dict)
-                else {}
+                {str(k): str(v) for k, v in cookies.items()} if isinstance(cookies, dict) else {}
             ),
             cost_estimate=body.get("cost") if isinstance(body.get("cost"), (int, float)) else None,
         )

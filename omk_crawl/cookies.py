@@ -37,7 +37,7 @@ class Cookie:
     value: str
     domain: str = ""
     path: str = "/"
-    expires: float | None = None     # epoch seconds; None = session cookie
+    expires: float | None = None  # epoch seconds; None = session cookie
     secure: bool = False
     http_only: bool = False
 
@@ -46,8 +46,12 @@ class Cookie:
         return self.expires is not None and self.expires < time.time()
 
     def to_playwright(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"name": self.name, "value": self.value,
-                             "path": self.path or "/", "domain": self.domain}
+        d: dict[str, Any] = {
+            "name": self.name,
+            "value": self.value,
+            "path": self.path or "/",
+            "domain": self.domain,
+        }
         if self.expires:
             d["expires"] = self.expires
         return d
@@ -86,9 +90,11 @@ class CookieManager:
                 except (TypeError, ValueError):
                     exp = None
                 self.cookies[item["name"]] = Cookie(
-                    name=item["name"], value=str(item.get("value", "")),
+                    name=item["name"],
+                    value=str(item.get("value", "")),
                     domain=item.get("domain", default_domain),
-                    path=item.get("path", "/"), expires=exp,
+                    path=item.get("path", "/"),
+                    expires=exp,
                     secure=bool(item.get("secure", False)),
                     http_only=bool(item.get("httpOnly", False)),
                 )
@@ -109,8 +115,12 @@ class CookieManager:
             except ValueError:
                 exp = None
             self.cookies[name] = Cookie(
-                name=name, value=value, domain=domain, path=path,
-                expires=exp, secure=secure.upper() == "TRUE",
+                name=name,
+                value=value,
+                domain=domain,
+                path=path,
+                expires=exp,
+                secure=secure.upper() == "TRUE",
             )
         log.info("loaded %d cookies from Netscape file", len(self.cookies))
         return self
@@ -122,7 +132,8 @@ class CookieManager:
             if "=" in pair:
                 k, v = pair.split("=", 1)
                 self.cookies[k.strip()] = Cookie(
-                    name=k.strip(), value=v.strip(), domain=default_domain)
+                    name=k.strip(), value=v.strip(), domain=default_domain
+                )
         log.info("loaded %d cookies from header", len(self.cookies))
         return self
 

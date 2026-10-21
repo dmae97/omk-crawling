@@ -8,10 +8,11 @@ description: 'OMK 웹·데이터 수집/추출 툴���스 — 13개 도구 
   patchright(패치된 Playwright). 돌파 레이어: 크로스레이어 지문 일관성(fingerprint), 시드 결정적
   인간 행동(behavior), 세션 웜업·클리어런스 재사용(warmup). Deep evasion layers (v2.14): TCP stack emulation, TLS/JA3 normalization, CDP leak
   patching, JS property spoofing, typing and session rhythm, challenge policy, and an
-  offline self-check. Use for crawling, scraping, deep crawl, RAG collection, anti-bot
+  offline self-check. Core deep crawl (v2.15): bounded BFS site traversal (--deep) with
+  robots.txt sitemap seeding. Use for crawling, scraping, deep crawl, RAG collection, anti-bot
   navigation, browser automation, or mobile app collection.'
 license: Apache-2.0
-version: 2.14.1
+version: 2.16.0
 metadata:
   category: research
   locale: ko-KR
@@ -78,6 +79,8 @@ metadata:
 | **Remove CDP/automation artifacts and verify it** | `patch_plan` / `cdp_probe_script` / `audit_cdp` | [breakthrough.md](references/breakthrough.md) |
 | **대규모 클래식 크롤** (파이프라인·미들웨어·성숙한 생태계) | **scrapy** | [tools/scrapy.md](references/tools/scrapy.md) |
 | **큐·오토스케일·프록시 로테이션**, JS/TS 또는 Python | **crawlee** | [tools/crawlee.md](references/tools/crawlee.md) |
+| **사이트 전체 순회** (BFS·페이지 상한·sitemap 시딩 — 코어 내장) | `omk-crawl <url> --deep` | [deep-crawl.md](references/deep-crawl.md) |
+| **프록시 풀 회전 크롤링** (무료 프록시 수확·검증·요청마다 회전) | `omk-crawl <url> --proxy-pool` / `proxy://stats` | 아래 프록시 풀 섹션 |
 | 웹 → **LLM용 Markdown** / **딥크롤**(사이트·문서 전체) / **MCP** | **crawl4ai** | [choosing.md](references/choosing.md) |
 | **에이전트가 브라우저 조작** (로그인·다단계·클릭·폼) | **browser-use** | [tools/browser-use.md](references/tools/browser-use.md) |
 | 예시만 주면 **추출 규칙 학습** (브라우저 X, 초경량) | **autoscraper** | [tools/autoscraper.md](references/tools/autoscraper.md) |
@@ -97,6 +100,31 @@ redteam/jailbreak 전송·러너가 같은 프록시를 공유한다 — **serve
 진단 레인은 기본 직결**(opt-in `OMK_PROXY_OFFENSIVE=1`). 부분 설정은
 TypeError로 차단(조용한 직결 없음), `NO_PROXY`에 루프백/메타데이터 강제.
 설정·소비자 표는 [references/proxy-decodo.md](references/proxy-decodo.md).
+
+## 프록시 풀 회전 크롤링 (v2.16, 무료 프록시 — 무한의 굴레)
+
+유료 프록시 없이 지속 크롤링: 무료 소스 17곳에서 리스트를 수확 → 검증 →
+요청마다 회전 → 결과 되먹임(성공↑·429 백오프·407 소각) → 풀 고갈 시 비상 보충.
+`FreshnessEngine`이 백그라운드에서 수확-검증 루프를 돌린다(무한의 굴레).
+
+```bash
+pip install 'omk-crawl[proxy]'                       # aiohttp + aiohttp-socks
+omk-crawl proxy://stats                              # 풀 스냅샷 (오프라인)
+omk-crawl proxy://refresh                            # 수확+검증 1사이클
+omk-crawl 'proxy://loop?cycles=5&interval=30'        # 경계 루프
+cycles=0                                             # 무한 — Ctrl+C까지
+omk-crawl <url> --proxy-pool                         # 요청마다 프록시 회전 크롤
+```
+
+- 되먹임: ok→점수↑, 429→프록시별 백오프, 407→소각(영속화), 연속 실패→장기 백오프.
+- 신선도(newest): 소스가 다시 실어준 프록시는 `harvested_at` 터치, `STALE_SECONDS`
+  (기본 1h, `OMK_PROXY_STALE_SECONDS`) 초과 시 점수 강등 — 최신 우선 선택.
+- TLS 회전: 노드별 `tls_profile`(chrome/safari/edge/firefox 8종)이 curl_cffi에 그대로 적용.
+- Python: `from omk_crawl.rotate_crawl import RotationCrawler; RotationCrawler().crawl(url)`.
+- 검증 키: Firebase 타깃 검증은 `OMK_PROXY_VALIDATE_KEY` 환경변수(소스에 키 없음),
+  없으면 httpbin 기반 일반 검증.
+
+## Egress 프록시 (Decodo) — 유료 전용 레인
 
 ## 도구는 결합된다
 

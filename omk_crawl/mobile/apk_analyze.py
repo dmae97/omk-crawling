@@ -256,6 +256,7 @@ def _manifest_meta(data: bytes) -> dict[str, Any]:
                 continue
             if s.count(".") >= 1 and len(s) < 60:
                 cands.append(s)
+
         # prefer tokens that look like app ids (com.* / org.*)
         def _pkg_rank(x: str) -> tuple[int, int]:
             return (0 if x.startswith(("com.", "org.")) else 1, len(x))
@@ -328,15 +329,17 @@ def _scan_zip_strings(apk: Path) -> tuple[list[str], list[str], list[str], dict[
 
             # Priority: all root dex first, then config files, then assets (capped)
             dex_files = [
-                n
-                for n in names
-                if n == "classes.dex" or re.fullmatch(r"classes\d+\.dex", n)
+                n for n in names if n == "classes.dex" or re.fullmatch(r"classes\d+\.dex", n)
             ]
             dex_files = sorted(
                 dex_files,
-                key=lambda n: 0 if n == "classes.dex" else int(re.search(r"\d+", n).group())  # type: ignore[union-attr]
-                if re.search(r"\d+", n)
-                else 99,
+                key=lambda n: (
+                    0
+                    if n == "classes.dex"
+                    else int(re.search(r"\d+", n).group())  # type: ignore[union-attr]
+                    if re.search(r"\d+", n)
+                    else 99
+                ),
             )
             config_files = [
                 n
@@ -354,9 +357,7 @@ def _scan_zip_strings(apk: Path) -> tuple[list[str], list[str], list[str], dict[
                 )
                 and not n.startswith("res/")
             ][:40]
-            asset_files = [n for n in names if n.startswith("assets/") and not n.endswith("/")][
-                :30
-            ]
+            asset_files = [n for n in names if n.startswith("assets/") and not n.endswith("/")][:30]
             priority = dex_files + config_files + asset_files
 
             for n in priority:

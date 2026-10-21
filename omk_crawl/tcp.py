@@ -206,8 +206,13 @@ class TcpStackProfile:
     sack_ok: bool = True
     timestamps: bool = True
     df: bool = True
-    options: tuple[int, ...] = (OPT_MSS, OPT_SACK_PERMITTED, OPT_TIMESTAMPS, OPT_NOP,
-                               OPT_WINDOW_SCALE)
+    options: tuple[int, ...] = (
+        OPT_MSS,
+        OPT_SACK_PERMITTED,
+        OPT_TIMESTAMPS,
+        OPT_NOP,
+        OPT_WINDOW_SCALE,
+    )
 
     def option_kinds(self) -> tuple[int, ...]:
         """TCP option kinds in wire order."""
@@ -296,8 +301,15 @@ STACKS: tuple[TcpStackProfile, ...] = (
         window=65535,
         mss=1460,
         window_scaling=6,
-        options=(OPT_MSS, OPT_NOP, OPT_WINDOW_SCALE, OPT_NOP, OPT_NOP, OPT_TIMESTAMPS,
-                 OPT_SACK_PERMITTED),
+        options=(
+            OPT_MSS,
+            OPT_NOP,
+            OPT_WINDOW_SCALE,
+            OPT_NOP,
+            OPT_NOP,
+            OPT_TIMESTAMPS,
+            OPT_SACK_PERMITTED,
+        ),
     ),
     TcpStackProfile(
         name="linux-6",
@@ -324,8 +336,15 @@ STACKS: tuple[TcpStackProfile, ...] = (
         window=65535,
         mss=1460,
         window_scaling=6,
-        options=(OPT_MSS, OPT_NOP, OPT_WINDOW_SCALE, OPT_NOP, OPT_NOP, OPT_TIMESTAMPS,
-                 OPT_SACK_PERMITTED),
+        options=(
+            OPT_MSS,
+            OPT_NOP,
+            OPT_WINDOW_SCALE,
+            OPT_NOP,
+            OPT_NOP,
+            OPT_TIMESTAMPS,
+            OPT_SACK_PERMITTED,
+        ),
     ),
 )
 

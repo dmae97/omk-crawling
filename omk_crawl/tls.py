@@ -55,8 +55,24 @@ __all__ = [
 # middleboxes honest. Their *presence* is a family tell; their *values* rotate
 # per connection, so they must be stripped before any stable hash is computed.
 GREASE_VALUES: frozenset[int] = frozenset(
-    {0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A,
-     0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA, 0xDADA, 0xEAEA, 0xFAFA}
+    {
+        0x0A0A,
+        0x1A1A,
+        0x2A2A,
+        0x3A3A,
+        0x4A4A,
+        0x5A5A,
+        0x6A6A,
+        0x7A7A,
+        0x8A8A,
+        0x9A9A,
+        0xAAAA,
+        0xBABA,
+        0xCACA,
+        0xDADA,
+        0xEAEA,
+        0xFAFA,
+    }
 )
 
 # Enough of the IANA registry to make audits readable; unknown ids render as
@@ -159,8 +175,7 @@ class TlsClientHello:
     def has_grease(self) -> bool:
         """Whether any GREASE codepoint appears anywhere in the hello."""
         return any(
-            is_grease(v)
-            for v in (*self.cipher_suites, *self.extensions, *self.elliptic_curves)
+            is_grease(v) for v in (*self.cipher_suites, *self.extensions, *self.elliptic_curves)
         )
 
     @property
@@ -216,9 +231,7 @@ class TlsClientHello:
         if norm.alpn:
             first = norm.alpn[0]
             alpn = (first[0] + first[-1]) if first else ""
-        part_a = (
-            f"t{version}{sni}{len(norm.cipher_suites):02d}{len(norm.extensions):02d}{alpn}"
-        )
+        part_a = f"t{version}{sni}{len(norm.cipher_suites):02d}{len(norm.extensions):02d}{alpn}"
 
         def _digest(values: tuple[int, ...]) -> str:
             joined = ",".join(f"{v:04x}" for v in sorted(values))
@@ -241,15 +254,11 @@ class TlsClientHello:
 
     def cipher_names(self) -> list[str]:
         """Human-readable cipher list (unknown ids as ``0xNNNN``)."""
-        return [
-            CIPHER_NAMES.get(c, f"0x{c:04x}") for c in normalize_grease(self.cipher_suites)
-        ]
+        return [CIPHER_NAMES.get(c, f"0x{c:04x}") for c in normalize_grease(self.cipher_suites)]
 
     def extension_names(self) -> list[str]:
         """Human-readable extension list (unknown ids as ``0xNNNN``)."""
-        return [
-            _EXT_NAMES.get(e, f"0x{e:04x}") for e in normalize_grease(self.extensions)
-        ]
+        return [_EXT_NAMES.get(e, f"0x{e:04x}") for e in normalize_grease(self.extensions)]
 
 
 # ── Family models ──────────────────────────────────────────────────────────
@@ -276,48 +285,120 @@ _CHROME_GREASE = 0x0A0A
 
 _CHROME_CIPHERS: tuple[int, ...] = (
     _CHROME_GREASE,
-    0x1301, 0x1302, 0x1303,
-    0xC02B, 0xC02F, 0xC02C, 0xC030,
-    0xCCA9, 0xCCA8,
-    0xC013, 0xC014,
-    0x009C, 0x009D,
-    0x002F, 0x0035,
+    0x1301,
+    0x1302,
+    0x1303,
+    0xC02B,
+    0xC02F,
+    0xC02C,
+    0xC030,
+    0xCCA9,
+    0xCCA8,
+    0xC013,
+    0xC014,
+    0x009C,
+    0x009D,
+    0x002F,
+    0x0035,
 )
 
 _CHROME_EXTENSIONS: tuple[int, ...] = (
     _CHROME_GREASE,
-    0x0000, 0x0005, 0x000A, 0x000B, 0x000D, 0x0010, 0x0012, 0x0017,
-    0x001B, 0x0023, 0x002B, 0x002D, 0x0033, 0x4469, 0xFE0D, 0xFF01,
+    0x0000,
+    0x0005,
+    0x000A,
+    0x000B,
+    0x000D,
+    0x0010,
+    0x0012,
+    0x0017,
+    0x001B,
+    0x0023,
+    0x002B,
+    0x002D,
+    0x0033,
+    0x4469,
+    0xFE0D,
+    0xFF01,
 )
 
 _FIREFOX_CIPHERS: tuple[int, ...] = (
-    0x1301, 0x1303, 0x1302,
-    0xC02B, 0xC02F, 0xCCA9, 0xCCA8, 0xC02C, 0xC030,
-    0xC00A, 0xC009,
-    0xC013, 0xC014,
-    0x009C, 0x009D,
-    0x002F, 0x0035,
+    0x1301,
+    0x1303,
+    0x1302,
+    0xC02B,
+    0xC02F,
+    0xCCA9,
+    0xCCA8,
+    0xC02C,
+    0xC030,
+    0xC00A,
+    0xC009,
+    0xC013,
+    0xC014,
+    0x009C,
+    0x009D,
+    0x002F,
+    0x0035,
 )
 
 _FIREFOX_EXTENSIONS: tuple[int, ...] = (
-    0x0000, 0x0005, 0x000A, 0x000B, 0x000D, 0x0010, 0x0017, 0x001B,
-    0x001C, 0x0022, 0x0023, 0x002B, 0x002D, 0x0033, 0xFE0D, 0xFF01,
+    0x0000,
+    0x0005,
+    0x000A,
+    0x000B,
+    0x000D,
+    0x0010,
+    0x0017,
+    0x001B,
+    0x001C,
+    0x0022,
+    0x0023,
+    0x002B,
+    0x002D,
+    0x0033,
+    0xFE0D,
+    0xFF01,
 )
 
 _SAFARI_CIPHERS: tuple[int, ...] = (
-    0x1301, 0x1302, 0x1303,
-    0xC02C, 0xC02B, 0xCCA9, 0xC030, 0xC02F, 0xCCA8,
-    0xC00A, 0xC009,
-    0xC014, 0xC013,
-    0x009D, 0x009C,
-    0x0035, 0x002F,
-    0xC008, 0xC012,
+    0x1301,
+    0x1302,
+    0x1303,
+    0xC02C,
+    0xC02B,
+    0xCCA9,
+    0xC030,
+    0xC02F,
+    0xCCA8,
+    0xC00A,
+    0xC009,
+    0xC014,
+    0xC013,
+    0x009D,
+    0x009C,
+    0x0035,
+    0x002F,
+    0xC008,
+    0xC012,
     0x000A,
 )
 
 _SAFARI_EXTENSIONS: tuple[int, ...] = (
-    0x0000, 0x0005, 0x000A, 0x000B, 0x000D, 0x0010, 0x0012, 0x0015,
-    0x0017, 0x001B, 0x002B, 0x002D, 0x0033, 0xFF01,
+    0x0000,
+    0x0005,
+    0x000A,
+    0x000B,
+    0x000D,
+    0x0010,
+    0x0012,
+    0x0015,
+    0x0017,
+    0x001B,
+    0x002B,
+    0x002D,
+    0x0033,
+    0xFF01,
 )
 
 # Modern curves first (X25519), then NIST, then FFDHE where the family sends it.

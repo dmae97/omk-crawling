@@ -1,6 +1,24 @@
 # 딥크롤 · adaptive · 대규모 병렬
 
-## 딥크롤 전략
+## 코어 딥크롤 — `omk-crawl <url> --deep` (v2.15, zero-dep 내장)
+
+crawl4ai 없이도 코어 엔진이 사이트를 순회한다. 페이지마다 SmartRouter 에스컬레이션이
+그대로 적용되고, 도메인별 politeness·robots.txt도 한 곳에서 관리된다.
+
+```bash
+omk-crawl https://docs.example.com --deep --max-pages 50 --depth 3
+omk-crawl https://docs.example.com --deep --sitemap-seed          # robots.txt sitemap 시딩
+omk-crawl https://docs.example.com --deep --same-domain           # 서브도메인 허용
+omk-crawl https://docs.example.com --deep --include '/docs/' -o site.md
+omk-crawl https://docs.example.com --deep --json                  # 페이지별 상태+markdown
+```
+
+- 예산: `--max-pages`(기본 20) 도달 시 `stop_reason=max_pages`, 프론티어 소진 시 `frontier_empty`.
+- 스코프: 기본 same-origin, `--same-domain`은 마지막 두 라벨 비교(제로의존 휴리스틱).
+- 필터: `--include`/`--exclude` 정규식(반복 가능, exclude 우선). 에셋(이미지·폰트·아카이브 등)은 자동 제외.
+- Python API: `from omk_crawl.deep import deep_crawl, DeepCrawlConfig`.
+
+## 딥크롤 전략 (crawl4ai)
 
 `CrawlerRunConfig(deep_crawl_strategy=...)`에 붙인다. 결과는 페이지들의 리스트(또는 `stream=True`면 async iterator).
 

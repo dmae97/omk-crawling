@@ -16,6 +16,7 @@ _SCHEMES = {
     "baemin": "baemin",
     "apk": "apk",
     "ipa": "ipa",
+    "proxy": "proxy_pool",
 }
 _FILES = {
     ".har": "har",

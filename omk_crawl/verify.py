@@ -324,9 +324,7 @@ def score(surface: RequestSurface) -> Verdict:
             passed.append(check.key)
             earned += check.weight
 
-    judged = _TOTAL_WEIGHT - sum(
-        check.weight for check in CHECKS if check.key in unscored
-    )
+    judged = _TOTAL_WEIGHT - sum(check.weight for check in CHECKS if check.key in unscored)
     return Verdict(
         score=(earned / judged) if judged else 0.0,
         detected=tuple(detected),

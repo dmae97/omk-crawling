@@ -1,5 +1,92 @@
 # Changelog
 
+## [2.16.0] — 2026-10-21
+
+The free-proxy rotation chain: harvest from public lists → validate → rotate
+per request → feed every outcome back → refill on exhaustion. The engine
+v2 and the self-healing freshness layer already existed; this change wires
+them into the crawl path, fixes their deployment blockers, and adds the
+first tests they ever had.
+
+### Fixed
+
+- `proxy_engine_v2`: cache path was a hardcoded absolute path from another
+  machine (`/home/yu/...`) — now project-relative `.crawl_cache` (env
+  `OMK_CACHE_DIR` still wins). IPv6 probe no longer runs on the constructor's
+  critical path (lazy, once). Burned proxies are now persisted (in-memory
+  burn died on restart and the cache resurrected known-bad endpoints).
+- Protocol detection read the URL scheme, so every https-served text list
+  (all of GitHub raw) was labeled `https`. Detection now uses filename/query
+  markers (`http.txt`, `protocol=socks5`, `type=http`, `HTTPS_RAW`,
+  `/socks5_list/`) with the scheme excluded.
+- `aiohttp`/`aiohttp-socks` were lazy-imported but declared nowhere — new
+  `proxy` extra (`pip install 'omk-crawl[proxy]'`), included in `all`.
+
+### Added
+
+- Freshness ("newest"): `ProxyNode.harvested_at`/`source`; a source
+  re-serving a proxy touches its freshness instead of duplicating it;
+  `STALE_SECONDS` (default 1h, `OMK_PROXY_STALE_SECONDS`) demotes stale
+  entries in scoring and `next(fresh_only=True)` excludes them.
+- `rotate_crawl.py` — `RotationCrawler`: one pool proxy per attempt over
+  `curl_cffi` with the node's assigned TLS profile; outcome feedback
+  (ok→score up, 429→per-proxy backoff, 407→burn, blocked/error→failure
+  streaks); bounded synchronous refill when the pool empties mid-crawl;
+  `crawl_many()` bounded concurrency. `pool_cycles()` is the bounded
+  무한의 굴레 loop (cycles=0 → until cancelled).
+- `proxy://` scheme + `ProxyPoolTool`: `proxy://stats` (offline),
+  `proxy://refresh`, `proxy://loop?cycles=N&interval=S`. Bad query params
+  fail closed as results, never raise (BaseTool contract).
+- CLI `--proxy-pool`: crawl a URL through the rotation pool.
+- 30 offline tests (`tests/test_proxy_rotation.py`); suite now 714 passing.
+
+### Verification boundaries
+
+- Live harvesting/validation against public proxy sources and the Firebase
+  validation target are network paths exercised only by the live lane — the
+  offline suite covers parsing, scoring, selection, feedback, persistence
+  and CLI plumbing with fakes.
+- Same-domain-style caveat: free proxies are untrusted third parties —
+  credentials or personal data must not transit them; the pool is for
+  public-content crawling only.
+
+## [2.15.0] — 2026-10-21
+
+Core site-crawl plane: the engine could escalate a single URL but had no
+first-party way to walk a site. Deep crawl and sitemap support close that
+gap with zero new dependencies.
+
+### Added
+
+- `deep.py` — bounded BFS site traversal. Every page fetch goes through
+  `SmartRouter`, so per-page escalation, per-domain politeness and robots.txt
+  keep one source of truth. Explicit budgets (`max_pages`, `max_depth`),
+  same-origin/same-domain scoping, include/exclude regexes, asset filtering,
+  optional sitemap seeding, and an explicit `stop_reason`
+  (`max_pages` / `frontier_empty`) on every result. Link extraction uses
+  `html.parser`; URL normalization drops fragments, default ports and
+  userinfo. One page raising never stops the crawl.
+- `sitemap.py` — robots.txt `Sitemap:` discovery (authoritative when
+  present; conventional paths as fallback), XML urlset / sitemapindex
+  parsing (namespace-agnostic, bounded index expansion) and plain-text
+  lists. Stdlib ElementTree only; the default fetcher caps documents at
+  8 MiB and fail-open degrades to `[]`.
+- CLI: `--deep` with `--max-pages`, `--depth`, `--sitemap-seed`,
+  `--same-domain`, `--include`, `--exclude`. Human output is per-page
+  summaries plus a stats footer; `--json` emits the full machine-readable
+  report; `-o` writes combined Markdown.
+- 39 new offline tests (`tests/test_sitemap.py`, `tests/test_deep.py`); suite
+  now 684 passing.
+
+### Verification boundaries
+
+- Same-domain scoping compares the last two DNS labels (zero-dep heuristic):
+  `co.uk`-style public suffixes over-couple by design; use `--include`/
+  `--exclude` for precision.
+- Sitemap documents larger than 8 MiB are truncated by the default fetcher.
+- `links_found` counts links extracted within link-extraction depth, not
+  every anchor on every fetched page.
+
 ## [2.14.1] — 2026-09-17
 
 ### Added

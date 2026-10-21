@@ -42,11 +42,7 @@ class AppStoreApp:
         return d
 
     def to_markdown(self) -> str:
-        size_mb = (
-            f"{self.file_size_bytes / 1_000_000:.1f} MB"
-            if self.file_size_bytes
-            else "?"
-        )
+        size_mb = f"{self.file_size_bytes / 1_000_000:.1f} MB" if self.file_size_bytes else "?"
         lines = [
             f"# App Store: {self.track_name}",
             "",

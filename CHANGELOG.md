@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Cross-platform TCP tests no longer assume `TCP_MAXSEG` is writable on every
+  kernel. MSS results are checked against a native socket probe, while rejected
+  options must still retain their error and keep the emulation report unsuccessful.
+
 ## [2.16.0] — 2026-10-21
 
 The free-proxy rotation chain: harvest from public lists → validate → rotate

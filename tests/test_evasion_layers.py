@@ -179,18 +179,41 @@ class TestTcpStacks:
         stack = next(s for s in STACKS if s.name == "windows-11")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             report = apply_to_socket(sock, stack)
-            assert report.errors == {}
+            # MSS can be rejected independently on macOS and Windows.
+            assert "ttl" not in report.errors
             assert report.applied["ttl"] == stack.ttl
             assert sock.getsockopt(socket.IPPROTO_IP, socket.IP_TTL) == stack.ttl
+
+    @pytest.mark.skipif(not hasattr(socket, "TCP_MAXSEG"), reason="TCP_MAXSEG unavailable")
+    def test_mss_report_matches_native_kernel_support(self):
+        """Compare the report with an independent setsockopt, not OS assumptions."""
+        stack = STACKS[0]
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_MAXSEG, stack.mss)
+            except OSError as exc:
+                expected_errors = {"mss": f"{type(exc).__name__}: {exc}"}
+            else:
+                expected_errors = {}
+            report = apply_to_socket(sock, stack)
+        assert report.errors == expected_errors
+        assert ("mss" in report.applied) == (not expected_errors)
+        assert report.ok == (not expected_errors)
 
     def test_apply_reports_kernel_owned_fields_as_unsupported(self):
         """Emulation must not claim what a userspace socket cannot do (P1)."""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             report = apply_to_socket(sock, STACKS[0])
-        assert "window_scaling" in report.unsupported
-        assert "options" in report.unsupported
-        assert "timestamps" in report.unsupported
-        assert report.ok
+        assert set(report.unsupported) == {
+            "window_scaling",
+            "options",
+            "sack_ok",
+            "timestamps",
+            "df",
+            "isn",
+            "initial_window",
+        }
+        assert set(report.unsupported).isdisjoint(report.applied)
 
     def test_emulation_report_serializes(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -1093,11 +1116,12 @@ class _StubSocket:
 class TestPlatformVariance:
     """Platform-difference branches, exercised without needing the platform."""
 
-    def test_rejected_option_is_reported_not_raised(self):
-        stub = _StubSocket(reject={"rcvbuf"})
+    @pytest.mark.parametrize("field_name", ["mss", "rcvbuf"])
+    def test_rejected_option_is_reported_not_raised(self, field_name):
+        stub = _StubSocket(reject={field_name})
         report = apply_to_socket(stub, STACKS[0])  # type: ignore[arg-type]
-        assert "rcvbuf" in report.errors
-        assert "rcvbuf" not in report.applied
+        assert report.errors == {field_name: "OSError: [Errno 92] Protocol not available"}
+        assert field_name not in report.applied
         assert "ttl" in report.applied, "other options still applied"
         assert not report.ok
 

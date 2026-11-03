@@ -91,6 +91,10 @@ def _prepare(router: SmartRouter, url: str, kwargs: dict[str, Any]) -> _Plan:
 
 
 def _stop_reason(result: CrawlResult, detection: Detection, method: str) -> str | None:
+    if result.tool == "agent_reach":
+        reason = result.metadata.get("stop_reason")
+        if isinstance(reason, str) and reason:
+            return reason
     if result.status_code in (401, 407) or is_auth_block(detection.block):
         result.metadata["auth_stop"] = True
         return "auth_required"
@@ -159,7 +163,15 @@ def _exhausted(
 ) -> CrawlResult:
     result = best or CrawlResult(url=plan.target.value, status=CrawlStatus.ERROR)
     result.metadata["escalation_exhausted"] = True
-    return _finish(router, plan, result, attempts, "max_attempts" if pending else "tools_exhausted")
+    adapter_reason = result.metadata.get("stop_reason") if result.tool == "agent_reach" else None
+    reason = (
+        adapter_reason
+        if isinstance(adapter_reason, str) and adapter_reason
+        else "max_attempts"
+        if pending
+        else "tools_exhausted"
+    )
+    return _finish(router, plan, result, attempts, reason)
 
 
 def diagnose(router: SmartRouter, url: str, kwargs: dict[str, Any]) -> dict[str, Any]:

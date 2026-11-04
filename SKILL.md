@@ -1,6 +1,6 @@
 ---
 name: omk-crawling
-description: 'OMK 웹·데이터 수집/추출 툴���스 — 13개 도구 + 돌파(breakthrough) 레이어. crawl4ai(웹→LLM
+description: 'OMK 웹·데이터 수집/추출 툴���스 — 14개 도구 + 돌파(breakthrough) 레이어. agent-reach(플랫폼 검색·읽기·hot·transcribe), crawl4ai(웹→LLM
   Markdown·딥크롤·MCP), scrapy(대규모 클래식), crawlee(큐·오토스케일·프록시), browser-use(LLM
   브라우저 에이전트), curl-impersonate/curl_cffi(TLS·JA3 위장 403 우회), autoscraper(예시→규칙
   학습), markitdown(파일→Markdown), scrcpy(Android 미러·제어), scrapling(스텔스·안티봇),
@@ -21,6 +21,7 @@ metadata:
     family: web-access
     siblings: [insane-search, scrapling]
   tools:
+    - { name: agent-reach,      repo: https://github.com/Panniantong/agent-reach,   pkg: 'CLI / built-in agent_reach adapter', license: MIT }
     - { name: crawl4ai,         repo: https://github.com/unclecode/crawl4ai,        pkg: 'pip:crawl4ai==0.9.2',       license: Apache-2.0 }
     - { name: scrapy,           repo: https://github.com/scrapy/scrapy,             pkg: 'pip:scrapy==2.17.0',        license: BSD-3-Clause }
     - { name: crawlee,          repo: https://github.com/apify/crawlee,             pkg: 'npm:crawlee@3.17.0 / pip:crawlee==1.8.3', license: Apache-2.0 }
@@ -47,6 +48,7 @@ metadata:
 ## 레이어별 지도
 
 ```
+⓪ 플랫폼 읽기             agent-reach(검색·read·hot·subtitle/transcribe — 실제 channel/action만)
 ① Fetch / 안티핑거프린트   curl-impersonate·curl_cffi(TLS·JA3) · scrapling(스텔스) · insane-search(단일 URL)
 ② Crawl 프레임워크         scrapy(클���식·생태계) · crawlee(큐·오토스케일·프록시) · crawl4ai(LLM·딥크롤·MCP)
 ③ 브라우저 자동화          camoufox(안티디텍트) · nodriver(CDP) · patchright(패치PW) · browser-use(LLM) · crawl4ai/scrapling
@@ -86,6 +88,7 @@ metadata:
 | 예시만 주면 **추출 규칙 학습** (브라우저 X, 초경량) | **autoscraper** | [tools/autoscraper.md](references/tools/autoscraper.md) |
 | PDF·Office·이미지·오디오·HTML **파일 → Markdown** | **markitdown** | [tools/markitdown.md](references/tools/markitdown.md) |
 | 웹/API 없이 **Android 앱에만** 있는 데이터 | **scrcpy** | [tools/scrcpy.md](references/tools/scrcpy.md) |
+| GitHub·YouTube·Bilibili·V2EX·Xueqiu·Xiaoyuzhou 등 플랫폼 읽기 | **agent-reach** / `reach://` | [agent-reach.md](references/agent-reach.md) |
 | **Reddit** 서브레딧/검색 JSON | **reddit** / `RedditClient` | [tools/reddit.md](references/tools/reddit.md) |
 | **배달의민족** 근처 가게 리스트 (geo) | **baemin** / `BaeminClient` | [tools/baemin.md](references/tools/baemin.md) |
 | **iOS App Store** 메타 (IPA 없을 때) | **appstore** / `AppStoreClient` | [tools/appstore.md](references/tools/appstore.md) |
@@ -262,11 +265,27 @@ scrcpy                                  # 미러링+제어
 scrcpy --record session.mp4 --no-audio  # 세션 녹화
 ```
 
+### agent_reach — 실제 플랫폼 channel/action 읽기
+
+별도 설치된 `agent-reach` 실행 파일을 셸 없이 한 번만 호출한다. hot 계열은 positional query 없이
+실행하고, 상위가 지원하는 경우 `limit`만 `--limit`으로 전달한다.
+
+```bash
+omk-crawl 'reach://github/search?q=agent%20reach' --json
+omk-crawl 'reach://bilibili/hot?limit=5' --json
+omk-crawl 'reach://xueqiu/hot_posts' --json
+omk-crawl 'reach://xiaoyuzhou/transcribe?url=<episode-url>' --json
+```
+
+`raw_response`와 item의 `raw`는 기본 제외다. 민감한 상위 원본이 필요할 때만
+`OMK_AGENT_REACH_RAW=1`을 명시적으로 설정한다. 실행 경로는 `OMK_AGENT_REACH_BIN`으로 바꾼다.
+
 ## references/
 
 | 경로 | 내용 |
 | ------ | ------ |
 | [`references/routing.md`](references/routing.md) | **크로스-툴 결정 트리** (무엇을 언제) |
+| [`references/agent-reach.md`](references/agent-reach.md) | Agent Reach channel/action·raw·프로세스 계약 |
 | [`references/tools/*.md`](references/tools/) | 도구별 상세 (10개) |
 | [`references/choosing.md`](references/choosing.md) · [`extraction`](references/extraction.md) · [`deep-crawl`](references/deep-crawl.md) · [`docker-mcp`](references/docker-mcp.md) · [`cli`](references/cli.md) | crawl4ai 세부 |
 | `examples/*.py` | crawl4ai·markitdown·autoscraper·curl_cffi 실행 예제 |

@@ -25,6 +25,9 @@ Usage:
     omk-crawl ios://Freeform                         # iOS-only style search
     omk-crawl reddit://r/programming                 # Reddit listing JSON
     omk-crawl 'reddit://search?q=rust+async&limit=10'
+    omk-crawl 'reach://github/search?q=agent%20reach' --json
+    omk-crawl 'reach://bilibili/hot?limit=5' --json
+    omk-crawl 'reach://xiaoyuzhou/transcribe?url=<episode-url>' --json
 """
 
 from __future__ import annotations
@@ -137,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=("Smart crawling toolbox — web auto-escalation + Android/iOS surfaces"),
         epilog=(
             "Web: curl_cffi → crawl4ai → scrapling → browser-use. "
+            "Agent Reach: reach://<channel>/<action> (agent-reach binary). "
             "Mobile: apk / ipa / android:// (adb). "
             "Crawl4AI: https://github.com/unclecode/crawl4ai"
         ),
@@ -144,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "url",
         nargs="?",
-        help="URL, file path, .har/.apk/.ipa, or android:// scheme",
+        help="URL, file path, .har/.apk/.ipa, reach:// or android:// scheme",
     )
     parser.add_argument("--tool", "-t", help="Force a specific tool (skip auto-escalation)")
     parser.add_argument("--output", "-o", help="Save output to file")

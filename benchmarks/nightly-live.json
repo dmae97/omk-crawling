@@ -1,7 +1,7 @@
 {
   "mode": "live",
   "runs": 2,
-  "generated_at": "2026-11-05T03:12:16+0000",
+  "generated_at": "2026-11-06T03:12:07+0000",
   "results": [
     {
       "name": "example.com",
@@ -9,8 +9,8 @@
       "url": "https://example.com",
       "success_at_1": false,
       "success_at_final": false,
-      "p50_ms": 4.1,
-      "p95_ms": 7.4,
+      "p50_ms": 4.0,
+      "p95_ms": 7.3,
       "bytes": 0,
       "tool_path": [],
       "cost_proxy": 0

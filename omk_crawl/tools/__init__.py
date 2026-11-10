@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from omk_crawl.tools.agent_reach_tool import AgentReachTool
 from omk_crawl.tools.apk_tool import ApkTool
 from omk_crawl.tools.appstore_tool import AppStoreTool
 from omk_crawl.tools.autoscraper_tool import AutoscraperTool
@@ -56,6 +57,7 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
     "proxy_pool": ProxyPoolTool,
     "proxy": ProxyPoolTool,  # alias — omk-crawl proxy://…
     "reddit": RedditTool,
+    "agent_reach": AgentReachTool,
     # Mobile / native (layer 5)
     "apk": ApkTool,
     "ipa": IpaTool,
@@ -66,7 +68,7 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
 }
 
 MOBILE_TOOLS: frozenset[str] = frozenset({"apk", "ipa", "appstore", "ios", "scrcpy", "android"})
-TARGET_TOOLS: frozenset[str] = frozenset({"baemin", "reddit"})
+TARGET_TOOLS: frozenset[str] = frozenset({"baemin", "reddit", "agent_reach"})
 
 
 def get_tool(name: str, **kwargs) -> BaseTool:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
 from dataclasses import dataclass
 from enum import Flag, auto
 from functools import lru_cache
@@ -73,6 +75,7 @@ _HOST_TOOLS: dict[str, str] = {
     "ios": "always",
     "scrcpy": "adb",  # needs adb on PATH
     "android": "adb",
+    "agent_reach": "agent-reach",
 }
 
 
@@ -84,6 +87,9 @@ def _host_tool_available(name: str) -> bool:
         from omk_crawl.mobile.device import which_bin
 
         return which_bin("adb") is not None
+    if kind == "agent-reach":
+        executable = os.environ.get("OMK_AGENT_REACH_BIN", kind)
+        return os.name == "posix" and shutil.which(executable) is not None
     return False
 
 
@@ -112,7 +118,9 @@ def available_tools() -> list[str]:
 
 def missing_tools() -> list[str]:
     """List tools that need install (pip or host)."""
-    names = [n for n in list(_TOOL_MODULES) + ["apk", "ipa", "scrcpy"] if n != "android"]
+    names = [
+        n for n in list(_TOOL_MODULES) + ["apk", "ipa", "scrcpy", "agent_reach"] if n != "android"
+    ]
     return [name for name in names if not tool_available(name)]
 
 

@@ -13,6 +13,8 @@ omk-crawl https://example.com --no-browser --diagnose
 omk-crawl capture.har --json
 omk-crawl app.apk --json
 omk-crawl 'android://SERIAL/packages' --json
+omk-crawl 'reach://github/search?q=agent%20reach' --json
+omk-crawl 'reach://youtube/subtitle?url=<video-url>' --json
 ```
 
 ```python
@@ -34,6 +36,8 @@ capture = crawl("capture.har")  # 웹 수집기를 거치지 않음
 | 입력 | 경로 |
 | --- | --- |
 | 일반 HTTP(S) URL | 설치되어 있고 요청 조건을 지원하는 웹 어댑터 |
+| `reach://<channel>/<action>?q=...` 또는 `...?url=...` | [Agent Reach 어댑터](agent-reach.md) |
+| 지원 공식 도메인 및 하위 도메인의 HTTPS URL | [Agent Reach 어댑터](agent-reach.md)의 channel별 `read` |
 | `reddit://`, 실제 `reddit.com` 및 하위 도메인 | Reddit 어댑터 |
 | `appstore://`, `ios://` | App Store 메타데이터 |
 | `baemin://` | 기존 Baemin 클라이언트 |
@@ -49,6 +53,33 @@ HTTP 어댑터는 서비스 도메인에서도 robots 검사를 유지한다. `r
 전달한 `headers`, `cookies`, `proxy`, `session`, `timeout`을 지원하지 않는 어댑터는
 호출 전에 제외한다. `execution.skipped`에는 도구명·제외 사유·미지원 항목명만 남기며
 옵션 값은 기록하지 않는다. `diagnose(url, **kwargs)`에서도 같은 계획을 확인할 수 있다.
+
+## Agent Reach 대상
+
+`reach://`는 실제 읽기 전용 channel/action 조합만 셸 없이 하위 프로세스 argv로 전달한다.
+bilibili/v2ex `hot`, xueqiu `hot_posts`/`hot_stocks`는 positional query 없이 실행하며 상위가
+지원하는 `limit`만 `--limit`으로 변환한다. `xiaoyuzhou transcribe`도 지원한다. 실행 파일은
+기본 `agent-reach`이며 `OMK_AGENT_REACH_BIN`으로 바꿀 수 있다. 지원 공식 도메인의 HTTPS
+자동 매핑, 전체 channel/action과 정확한 argv는 [Agent Reach 계약](agent-reach.md)에 정리했다.
+
+`agent_reach`는 `TARGET_TOOLS`에 등록되어 있지만 `ESCALATION_CHAIN`에는 없으므로 일반
+웹 실패 시 자동으로 추가되는 fallback이 아니다. Reddit은 기존 전용 어댑터가 우선하며
+plain HTTP와 유사 도메인은 Agent Reach로 자동 분기하지 않는다. 어댑터 결과 메타데이터에는
+`channel`, `action`, `untrusted_content`, `returncode`, `stop_reason`이 들어가고 상위가 제공하면
+`retry_after_seconds`도 보존한다. `raw_response`와 item `raw`는 기본 제외이며
+`OMK_AGENT_REACH_RAW=1`로만 보존한다. 오류 code/message는 sanitize하고 raw stdout/stderr는
+복사하지 않는다. `ok:false` envelope는 종료 코드 1보다 먼저 해석한다.
+
+공통 실행기는 Agent Reach를 재시도하지 않으며 `_stop_reason`과 exhaustion 경로도 어댑터의
+`auth_required`/`rate_limited`/`deadline_exceeded`/`tool_missing`을 그대로 보존한다. 자동 대기,
+로그인·설정 명령도 실행하지 않는다. `REACH_API_SUPERVISED=1`을 자식에 전달해 owned process
+group 정리가 후속 자식에도 적용되게 한다. 비POSIX 플랫폼은 이 정리를 보장할 수 없으므로
+프로세스 생성 전에 실패한다.
+
+실제 채널 준비 상태는 `agent-reach doctor --text`와
+`agent-reach check <channel> --text`로 별도 확인해야 한다. 이번 변경과 비라이브
+테스트는 두 라이브 점검을 실행하지 않았으므로 채널 인증·설정·상위 API 성공을 검증한
+것은 아니다.
 
 ## 예산
 

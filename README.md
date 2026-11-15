@@ -145,6 +145,9 @@ omk-crawl https://example.com -v
 omk-crawl reddit://r/programming
 omk-crawl 'appstore://search?q=요기요'
 omk-crawl 'baemin://shops?lat=36.83&lng=127.13&limit=40'
+omk-crawl 'reach://github/search?q=agent%20reach' --json
+omk-crawl 'reach://bilibili/hot?limit=5' --json
+omk-crawl 'reach://xiaoyuzhou/transcribe?url=<episode-url>' --json
 
 # Offline capture and mobile surfaces
 omk-crawl capture.har --json
@@ -152,6 +155,8 @@ omk-crawl app.apk -o apk.md
 omk-crawl app.ipa --json
 omk-crawl android://
 ```
+
+`reach://` uses the separately installed `agent-reach` executable (`OMK_AGENT_REACH_BIN` overrides its path). Raw response envelopes and per-item `raw` data are omitted by default; set `OMK_AGENT_REACH_RAW=1` only when sensitive upstream data is intentionally needed. See [Agent Reach adapter](references/agent-reach.md).
 
 ### Deep crawl controls
 
@@ -200,8 +205,8 @@ print(rotated.metadata.get("rotation"))
        ┌──────────────────────────┼──────────────────────────┐
        ▼                          ▼                          ▼
   single URL                 DeepCrawler                target adapters
-  escalation                 BFS + sitemap              Reddit / Baemin /
-  CrawlResult                bounded frontier           Android / iOS / HAR
+  escalation                 BFS + sitemap              Agent Reach / Reddit /
+  CrawlResult                bounded frontier           Baemin / Android / iOS / HAR
                                   │
                                   ▼
                          ┌──────────────────┐
@@ -227,6 +232,7 @@ print(rotated.metadata.get("rotation"))
 | agent-driven interaction | `browser-use` | last-resort public workflow |
 | many pages | `omk-crawl --deep` | bounded BFS and sitemap seeding |
 | public proxy rotation | `--proxy-pool` | harvest, score, rotate, refill |
+| platform search/read/hot/transcribe | `agent_reach`, `reach://` | bounded Agent Reach CLI routing |
 | files and captures | `markitdown`, `har` | local conversion and inspection |
 
 See the detailed router at [references/routing.md](references/routing.md) and adapter notes in [references/tools](references/tools).

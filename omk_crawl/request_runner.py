@@ -24,7 +24,8 @@ def fetch_sync(
     router: SmartRouter, execution: Execution, tool: BaseTool, url: str, kwargs: dict[str, Any]
 ) -> CrawlResult:
     result = CrawlResult(url=url, tool=tool.name, status=CrawlStatus.ERROR)
-    for retry in range(router.max_retries + 1):
+    max_retries = 0 if tool.name == "agent_reach" else router.max_retries
+    for retry in range(max_retries + 1):
         if execution.stopped():
             break
         if retry:
@@ -60,7 +61,8 @@ async def fetch_async(
     router: SmartRouter, execution: Execution, tool: BaseTool, url: str, kwargs: dict[str, Any]
 ) -> CrawlResult:
     result = CrawlResult(url=url, tool=tool.name, status=CrawlStatus.ERROR)
-    for retry in range(router.max_retries + 1):
+    max_retries = 0 if tool.name == "agent_reach" else router.max_retries
+    for retry in range(max_retries + 1):
         if execution.stopped():
             break
         if retry:

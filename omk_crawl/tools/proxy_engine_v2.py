@@ -140,7 +140,8 @@ def _anonymity_ok(node: ProxyNode, minimum: str | None) -> bool:
     """``True`` when the node's measured anonymity meets the gate."""
     if minimum is None:
         return True
-    return ANONYMITY_RANK.get(node.anonymity, -1) >= ANONYMITY_RANK[minimum]
+    grade = node.anonymity if node.anonymity_probed else "unknown"
+    return ANONYMITY_RANK.get(grade, -1) >= ANONYMITY_RANK[minimum]
 
 # ── Geo preferences (avoid KR/JP/CN for stealth) ──
 PREFERRED_GEOS = {"US", "DE", "NL", "SE", "CH", "FR", "CA", "SG", "AU", "UK", "FI", "NO"}
@@ -155,6 +156,7 @@ class ProxyNode:
     protocol: str = "http"  # http, https, socks5, socks4
     country: str = ""
     anonymity: str = "unknown"  # measured: transparent/anonymous/elite; "unknown" until probed
+    anonymity_probed: bool = False  # True only after _anonymity_probe set the grade
     latency_ms: float = 0.0
     uptime_pct: float = 80.0
     last_validated: float = 0.0
@@ -236,6 +238,7 @@ class ProxyNode:
             "protocol": self.protocol,
             "country": self.country,
             "anonymity": self.anonymity,
+            "anonymity_probed": self.anonymity_probed,
             "latency_ms": self.latency_ms,
             "uptime_pct": self.uptime_pct,
             "last_validated": self.last_validated,
@@ -250,7 +253,13 @@ class ProxyNode:
 
     @classmethod
     def from_dict(cls, d: dict) -> ProxyNode:
-        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+        node = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+        # A claimed grade with no measured probe must not survive a restart:
+        # caches written before this feature (or by a malicious/forged cache)
+        # would otherwise satisfy anonymity gates sight unseen.
+        if not node.anonymity_probed:
+            node.anonymity = "unknown"
+        return node
 
 
 class ProxyEngineV2:
@@ -632,13 +641,16 @@ class ProxyEngineV2:
         present = [h for h in _FWD_HEADERS if h in headers]
         if not present:
             node.anonymity = "elite"
+            node.anonymity_probed = True
             return
         own = await self._client_ip(session)
         if own is None:
             node.anonymity = "anonymous"  # can't prove a leak — never claim elite
+            node.anonymity_probed = True
             return
         leaked = any(own in headers[h] for h in present if h != "via")
         node.anonymity = "transparent" if leaked else "anonymous"
+        node.anonymity_probed = True
         if leaked:
             logger.warning(
                 "%s leaks client IP via %s — transparent", node.url, ",".join(present)

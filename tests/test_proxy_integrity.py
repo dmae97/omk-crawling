@@ -340,9 +340,9 @@ class TestAnonymityGate:
         monkeypatch.setattr(engine_mod, "BURNED_CACHE", tmp_path / "burned.json")
         eng = ProxyEngineV2(session_seed="test")
         eng._pool = [
-            ProxyNode(url="t:1", anonymity="transparent"),
-            ProxyNode(url="a:1", anonymity="anonymous"),
-            ProxyNode(url="e:1", anonymity="elite"),
+            ProxyNode(url="t:1", anonymity="transparent", anonymity_probed=True),
+            ProxyNode(url="a:1", anonymity="anonymous", anonymity_probed=True),
+            ProxyNode(url="e:1", anonymity="elite", anonymity_probed=True),
             ProxyNode(url="u:1", anonymity="unknown"),
         ]
         return eng
@@ -362,12 +362,19 @@ class TestAnonymityGate:
             assert node.anonymity == "elite"
 
     def test_exhausted_gate_returns_none(self, engine):
-        engine._pool = [ProxyNode(url="t:1", anonymity="transparent")]
+        engine._pool = [ProxyNode(url="t:1", anonymity="transparent", anonymity_probed=True)]
         assert engine.next(min_anonymity="anonymous") is None
 
     def test_persists_through_cache_roundtrip(self):
-        node = ProxyNode(url="1.2.3.4:80", anonymity="transparent")
+        node = ProxyNode(url="1.2.3.4:80", anonymity="transparent", anonymity_probed=True)
         assert ProxyNode.from_dict(node.to_dict()).anonymity == "transparent"
+
+    def test_claimed_grade_without_probe_fails_closed(self):
+        """Pre-feature/forged caches can claim 'elite' — restart must not trust it."""
+        node = ProxyNode.from_dict({"url": "1.2.3.4:80", "anonymity": "elite"})
+        assert node.anonymity == "unknown"
+        engine_mod_ok = engine_mod._anonymity_ok(node, "anonymous")
+        assert engine_mod_ok is False
 
 
 class TestRotationCrawlerAnonymity:
@@ -375,8 +382,8 @@ class TestRotationCrawlerAnonymity:
         monkeypatch.delenv("OMK_PROXY_MIN_ANONYMITY", raising=False)
         engine = _FakeEngine()
         engine.nodes = {
-            "transparent": ProxyNode(url="3.3.3.3:80", anonymity="transparent"),
-            "elite": ProxyNode(url="2.2.2.2:80", anonymity="elite", integrity=True),
+            "transparent": ProxyNode(url="3.3.3.3:80", anonymity="transparent", anonymity_probed=True),
+            "elite": ProxyNode(url="2.2.2.2:80", anonymity="elite", anonymity_probed=True, integrity=True),
         }
 
         def real_next(exclude=None, require_integrity=False, min_anonymity=None):

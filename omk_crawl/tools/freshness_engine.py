@@ -237,9 +237,18 @@ class FreshnessEngine:
 
     # ── Proxy interface ────────────────────────────────────
 
-    def next(self, exclude: set[str] | None = None) -> ProxyNode | None:
+    def next(
+        self,
+        exclude: set[str] | None = None,
+        require_integrity: bool = False,
+        min_anonymity: str | None = None,
+    ) -> ProxyNode | None:
         """Get next available proxy. Triggers emergency if pool low."""
-        node = self._engine.next(exclude=exclude)
+        node = self._engine.next(
+            exclude=exclude,
+            require_integrity=require_integrity,
+            min_anonymity=min_anonymity,
+        )
         if node is None:
             # Pool fully exhausted — emergency harvest
             self._emergency_count += 1

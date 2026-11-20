@@ -21,12 +21,19 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from html.parser import HTMLParser
-from urllib.parse import urlsplit, urlunsplit
+from typing import Any, Protocol
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from omk_crawl.detect import check_robots_txt
 from omk_crawl.result import CrawlResult, CrawlStatus
-from omk_crawl.router import SmartRouter
 from omk_crawl.sitemap import discover as discover_sitemaps
+
+
+class _Fetcher(Protocol):
+    """Any synchronous crawler — ``SmartRouter`` or ``RotationCrawler``."""
+
+    def crawl(self, url: str, **kwargs: Any) -> CrawlResult: ...
+
 
 _ASSET_SUFFIX_RE = re.compile(
     r"\.(?:jpg|jpeg|png|gif|webp|svg|ico|bmp|tiff?|avif|"
@@ -41,24 +48,116 @@ _ASSET_SUFFIX_RE = re.compile(
 _NON_PAGE_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "ftp:")
 
 
+_TRACKING_PARAMS = frozenset(
+    {
+        "gclid",
+        "dclid",
+        "fbclid",
+        "igshid",
+        "mc_cid",
+        "mc_eid",
+        "msclkid",
+        "ref_src",
+        "ref_source",
+        "spm",
+        "yclid",
+        "_ga",
+        "_gl",
+    }
+)
+
+_TRACKING_PREFIXES = ("utm_", "pk_", "matomo_")
+
+# <link> rel values that point at crawlable pages (not assets).
+_LINK_RELS = frozenset({"canonical", "next", "prev", "alternate", "amphtml", "index"})
+
+_META_REFRESH_URL_RE = re.compile(
+    r"^\s*\d+(?:\.\d+)?\s*;\s*url\s*=\s*['\"]?(?P<url>.*?)['\"]?\s*$",
+    re.IGNORECASE,
+)
+
+# Picks "url" / "mainEntityOfPage" string values out of JSON-LD script text.
+# Regex, not JSON — malformed blocks degrade to fewer links, never raise.
+_JSONLD_URL_RE = re.compile(r'"(?:url|mainEntityOfPage)"\s*:\s*"((?:[^"\\]|\\.)+)"')
+
+
 class _LinkExtractor(HTMLParser):
-    """Collect hrefs from ``<a>`` tags; tolerant of broken markup."""
+    """Collect candidate URLs beyond ``<a href>``; tolerant of broken markup.
+
+    Sources: ``<a href>``, ``<link rel=canonical|next|prev|alternate|amphtml|
+    index>``, ``<iframe>/<frame src>``, ``<meta http-equiv=refresh>`` targets,
+    and ``url`` values inside ``<script type="application/ld+json">`` blocks.
+    ``<base href>`` is captured as the join base, not emitted as a link.
+    """
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.hrefs: list[str] = []
+        self.base_href: str | None = None
+        self._jsonld_parts: list[str] = []
+        self._in_jsonld = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "a":
+        pairs = {name.lower(): value for name, value in attrs}
+        if tag == "script" and "ld+json" in (pairs.get("type") or "").lower():
+            self._in_jsonld = True
             return
-        for name, value in attrs:
-            if name == "href" and value:
-                self.hrefs.append(value)
+        if tag == "a":
+            if pairs.get("href"):
+                self.hrefs.append(pairs["href"])
+        elif tag == "link":
+            rels = set((pairs.get("rel") or "").lower().split())
+            if rels & _LINK_RELS and pairs.get("href"):
+                self.hrefs.append(pairs["href"])
+        elif tag in ("iframe", "frame"):
+            if pairs.get("src"):
+                self.hrefs.append(pairs["src"])
+        elif tag == "base":
+            if self.base_href is None and pairs.get("href"):
+                self.base_href = pairs["href"]
+        elif tag == "meta":
+            if (pairs.get("http-equiv") or "").lower() == "refresh" and pairs.get("content"):
+                match = _META_REFRESH_URL_RE.match(pairs["content"])
+                if match:
+                    self.hrefs.append(match.group("url"))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script":
+            self._in_jsonld = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_jsonld:
+            self._jsonld_parts.append(data)
+
+    def jsonld_urls(self) -> list[str]:
+        """URLs picked from JSON-LD blocks; ``\\/`` sequences unescaped."""
+        text = "".join(self._jsonld_parts)
+        return [m.group(1).replace("\\/", "/") for m in _JSONLD_URL_RE.finditer(text)]
+
+
+def _canonical_query(query: str) -> str:
+    """Sorted params minus tracking junk; ``""`` when nothing survives.
+
+    ``?b=2&utm_source=n&a=1`` → ``a=1&b=2`` — the two variants of a URL a
+    page emits for campaigns collapse into one frontier entry, so the page
+    budget is spent on distinct content instead of duplicates.
+    """
+    if not query:
+        return ""
+    kept = [
+        (key, value)
+        for key, value in parse_qsl(query, keep_blank_values=True)
+        if key.lower() not in _TRACKING_PARAMS
+        and not key.lower().startswith(_TRACKING_PREFIXES)
+    ]
+    kept.sort()
+    return urlencode(kept)
 
 
 def normalize_url(url: str) -> str | None:
     """Canonical page URL: lowercase scheme/host, default port stripped,
-    fragment dropped, userinfo dropped. Returns ``None`` for non-page URLs.
+    fragment dropped, userinfo dropped, query params sorted with tracking
+    params removed. Returns ``None`` for non-page URLs.
     """
     if not url:
         return None
@@ -81,7 +180,7 @@ def normalize_url(url: str) -> str | None:
     if port is not None and port != default_port:
         netloc = f"{netloc}:{port}"
     path = parts.path or "/"
-    return urlunsplit((scheme, netloc, path, parts.query, ""))
+    return urlunsplit((scheme, netloc, path, _canonical_query(parts.query), ""))
 
 
 def extract_links(html: str, base_url: str) -> list[str]:
@@ -91,12 +190,18 @@ def extract_links(html: str, base_url: str) -> list[str]:
         parser.feed(html)
     except Exception:  # noqa: BLE001 - broken markup must never fail a page
         pass
+    base = base_url
+    if parser.base_href:
+        try:
+            resolved = normalize_url(urljoin(base_url, parser.base_href.strip()))
+        except ValueError:
+            resolved = None
+        if resolved:
+            base = resolved
     seen: set[str] = set()
     links: list[str] = []
-    for href in parser.hrefs:
-        from urllib.parse import urljoin
-
-        absolute = normalize_url(urljoin(base_url, href.strip()))
+    for href in parser.hrefs + parser.jsonld_urls():
+        absolute = normalize_url(urljoin(base, href.strip()))
         if absolute and absolute not in seen:
             seen.add(absolute)
             links.append(absolute)
@@ -219,14 +324,16 @@ def deep_crawl(
     seed_url: str,
     config: DeepCrawlConfig | None = None,
     *,
-    router: SmartRouter | None = None,
+    router: _Fetcher | None = None,
     fetch: Callable[[str], str | None] | None = None,
 ) -> DeepCrawlResult:
     """Crawl a site breadth-first from ``seed_url`` within explicit budgets.
 
     ``router`` defaults to a fresh :class:`SmartRouter` (its per-domain rate
-    limiter and robots check govern every fetch). ``fetch`` is the sitemap
-    document fetcher (injectable for tests).
+    limiter and robots check govern every fetch); any object with a sync
+    ``crawl(url) -> CrawlResult`` works, e.g. ``RotationCrawler`` for
+    proxy-pool rotation. ``fetch`` is the sitemap document fetcher
+    (injectable for tests).
     """
     cfg = config or DeepCrawlConfig()
     if router is None:

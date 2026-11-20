@@ -53,6 +53,7 @@ metadata:
 ④ 추출                     autoscraper(학습형) · crawl4ai(CSS/LLM) · scrapling(셀렉터)
 ⑤ Markdown 변환            markitdown(파일: PDF·Office·이미지·오디오) · crawl4ai(웹)
 ⑥ 모바일·네이티브          apk/ipa 정적 분석 · scrcpy/adb(Android 미러·dumpsys) · [tools/mobile.md](references/tools/mobile.md)
+⑦ 플랫폼별 읽기           agent-reach(GitHub·YouTube·B站·V2EX·web + 선택 소셜/커리어) · [agent-reach.md](references/agent-reach.md)
 ⓪ 돌파 레이어 (v2.12)     fingerprint(크로스레이어 지문 일관성) · behavior(시드 결정적 인간 행동)
                           · warmup(세션 웜업→클리어런스 쿠키 재사용) — [breakthrough.md](references/breakthrough.md)
 ⓪ deep evasion (v2.14)     tls(JA3/JA4 normalization) | tcp(TCP stack emulation)
@@ -67,6 +68,11 @@ metadata:
 | ------------- | ------- | ------ |
 | 차단된 URL **하나**만 열어 본문 확인 (403/WAF/SPA 단발) | `insane-search` | (형제 스킬) |
 | 수집 본문의 CVE를 로컬 악용 저널과 대조 (API 없음) | `omk-jev` `screen` | `~/.omk/agent/skills/omk-jev` |
+| GitHub 저장소·Issue/PR·댓글 | `agent-reach github` / `agent-reach read <url>` | [agent-reach.md](references/agent-reach.md) |
+| YouTube 영상·자막·전사 | `agent-reach youtube` | [agent-reach.md](references/agent-reach.md) |
+| Bilibili 영상·검색·자막 | `agent-reach bilibili` (자막은 로그인이 필요할 수 있음) | [agent-reach.md](references/agent-reach.md) |
+| V2EX 주제·댓글 | `agent-reach v2ex` | [agent-reach.md](references/agent-reach.md) |
+| X·Reddit·小红书·LinkedIn 등 플랫폼 특화 읽기 | `agent-reach channels`로 지원 동작 확인 (자동 추가·로그인 금지) | [agent-reach.md](references/agent-reach.md) |
 | **TLS/JA3 핑거프린트**로 즉시 403 (브라우저 불필요) | **curl-impersonate** / `curl_cffi` | [tools/curl-impersonate.md](references/tools/curl-impersonate.md) |
 | 안티봇 **스텔스** + 정밀 CSS/XPath 반복 + Cloudflare Turnstile | `scrapling` | [tools/scrapling.md](references/tools/scrapling.md) |
 | **DataDome·Kasada·PerimeterX** (행동 기반 벤더) | `nodriver` → `camoufox` | [tools/nodriver.md](references/tools/nodriver.md) |
@@ -267,6 +273,7 @@ scrcpy --record session.mp4 --no-audio  # 세션 녹화
 | 경로 | 내용 |
 | ------ | ------ |
 | [`references/routing.md`](references/routing.md) | **크로스-툴 결정 트리** (무엇을 언제) |
+| [`references/agent-reach.md`](references/agent-reach.md) | 플랫폼별 검색·읽기·자막, 공개 우선·로그인 경계 |
 | [`references/tools/*.md`](references/tools/) | 도구별 상세 (10개) |
 | [`references/choosing.md`](references/choosing.md) · [`extraction`](references/extraction.md) · [`deep-crawl`](references/deep-crawl.md) · [`docker-mcp`](references/docker-mcp.md) · [`cli`](references/cli.md) | crawl4ai 세부 |
 | `examples/*.py` | crawl4ai·markitdown·autoscraper·curl_cffi 실행 예제 |

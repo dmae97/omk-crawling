@@ -21,6 +21,7 @@ from omk_crawl.tools.proxy_pool_tool import ProxyPoolTool
 from omk_crawl.tools.reddit_tool import RedditTool
 from omk_crawl.tools.scrapling_tool import ScraplingTool
 from omk_crawl.tools.scrcpy_tool import ScrcpyTool
+from omk_crawl.tools.tor_tool import TorTool
 from omk_crawl.tools.x_search import XSearchTool
 
 # Escalation order: lightest → heaviest (web only).
@@ -56,6 +57,7 @@ ALL_TOOLS: dict[str, type[BaseTool]] = {
     "proxy_pool": ProxyPoolTool,
     "proxy": ProxyPoolTool,  # alias — omk-crawl proxy://…
     "reddit": RedditTool,
+    "tor": TorTool,  # .onion targets — curl_cffi through a Tor SOCKS bridge
     # Mobile / native (layer 5)
     "apk": ApkTool,
     "ipa": IpaTool,

@@ -20,10 +20,11 @@ Respect each upstream license when you use the tool.
 | markitdown | 0.1.6 | MIT | https://github.com/microsoft/markitdown |
 | scrcpy | 4.1 | Apache-2.0 | https://github.com/Genymobile/scrcpy |
 | scrapling | 0.4.11 | BSD-3-Clause | https://github.com/d4vinci/Scrapling |
+| Agent Reach | 1.6.x | MIT | https://github.com/Panniantong/Agent-Reach |
 
 ## Shoutouts 🙏
 
-omk-crawling exists because these 11 projects did the hard work first.
+omk-crawling exists because these 12 projects did the hard work first.
 Every tool below is referenced, documented, and routed by this skill.
 **Thank you to every maintainer and contributor.**
 
@@ -78,6 +79,10 @@ Every tool below is referenced, documented, and routed by this skill.
 > The "single blocked URL" breaker and WAF escalation engine in this toolbox.
 > **Huge shoutout to fivetaku for building the most insane search plugin in the ecosystem.** 🙏
 
+### 12. Agent Reach — [Panniantong/Agent-Reach](https://github.com/Panniantong/Agent-Reach)
+> Read-only platform router for GitHub, YouTube, Bilibili, V2EX, the web, and optional social/career channels.
+> By **Agent Eyes** and contributors. MIT. Used as an installed tool, not vendored code.
+
 ## crawl4ai attribution (required)
 
 crawl4ai's license (Apache-2.0) carries a mandatory attribution addendum (see
@@ -96,7 +101,7 @@ Short form for agent/tool output:
 | License | Tools | Key obligation |
 |---------|-------|----------------|
 | Apache-2.0 | crawl4ai, crawlee, scrcpy | Attribution + NOTICE retention. crawl4ai has extra addendum. |
-| MIT | browser-use, curl-impersonate, curl_cffi, autoscraper, markitdown | Retain copyright + license notice. |
+| MIT | browser-use, curl-impersonate, curl_cffi, autoscraper, markitdown, Agent Reach | Retain copyright + license notice. |
 | BSD-3-Clause | scrapy, scrapling | Retain copyright + license. No endorsement use. |
 | GPTaku Plugins | insane-search | fivetaku/gptaku_plugins marketplace. |
 

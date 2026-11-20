@@ -62,6 +62,8 @@ _TOOL_MODULES: dict[str, str] = {
     # baemin uses curl_cffi; mark available when curl_cffi is importable
     "baemin": "curl_cffi",
     "reddit": "curl_cffi",
+    # .onion targets route through curl_cffi + a local Tor SOCKS bridge
+    "tor": "curl_cffi",
 }
 
 # Host-binary / pure-python mobile tools — not importlib modules.
@@ -350,15 +352,34 @@ def check_robots_txt(url: str, user_agent: str = "*") -> bool:
     return rp.can_fetch(user_agent, url)
 
 
+def _robots_text(scheme_netloc: str) -> str | None:
+    """Fetch robots.txt body; .onion rides the Tor bridge, clearnet uses urllib."""
+    from omk_crawl.targets import is_onion_host
+
+    if is_onion_host(scheme_netloc):
+        try:
+            from omk_crawl.tools.tor_tool import TorTool
+
+            result = TorTool().fetch(f"{scheme_netloc}/robots.txt", timeout=30)
+        except Exception:
+            return None
+        return result.html if result.ok and result.html else None
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{scheme_netloc}/robots.txt", timeout=10) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
+@lru_cache(maxsize=256)
 @lru_cache(maxsize=256)
 def _robots_for(scheme_netloc: str) -> RobotFileParser | None:
     """Fetch and cache robots.txt for a domain. Returns None on failure."""
-    import urllib.request  # noqa: F401 — needed by RobotFileParser internally
-
-    rp = RobotFileParser()
-    try:
-        rp.set_url(f"{scheme_netloc}/robots.txt")
-        rp.read()
-    except Exception:
+    text = _robots_text(scheme_netloc)
+    if text is None:
         return None
+    rp = RobotFileParser()
+    rp.parse(text.splitlines())
     return rp

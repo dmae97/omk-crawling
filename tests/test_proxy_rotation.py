@@ -53,7 +53,13 @@ class FakeEngine:
         self.harvest_calls: list[int] = []
         self.validate_calls: list[int] = []
 
-    def next(self, exclude: set[str] | None = None, fresh_only: bool = False) -> FakeNode | None:
+    def next(
+        self,
+        exclude: set[str] | None = None,
+        fresh_only: bool = False,
+        require_integrity: bool = False,
+        min_anonymity: str | None = None,
+    ) -> FakeNode | None:
         for node in self.nodes:
             if exclude and node.url in exclude:
                 continue
@@ -186,9 +192,12 @@ class TestRotationCrawler:
         engine = FakeEngine([])
         engine._engine = inner  # duck-typed wrapper
         responses: list[FakeNode | None] = [None, node]
-        engine.next = lambda exclude=None, fresh_only=False: (  # type: ignore[method-assign]
-            responses.pop(0) if responses else node
-        )
+        def _refill_next(
+            exclude=None, fresh_only=False, require_integrity=False, min_anonymity=None
+        ):
+            return responses.pop(0) if responses else node
+
+        engine.next = _refill_next  # type: ignore[method-assign]
         tool = FakeTool([ok()])
         crawler = RotationCrawler(engine=engine, tool=tool, auto_refill=True)
         result = crawler.crawl("https://t.example/")

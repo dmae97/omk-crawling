@@ -43,6 +43,15 @@ class Target:
     is_web: bool
 
 
+
+def is_onion_host(url: str) -> bool:
+    """True when the URL's host is a Tor hidden service (.onion)."""
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host == "onion" or host.endswith(".onion")
+
 def resolve_target(value: str, *, explicit: bool = False) -> Target:
     """Classify without fetching, opening a device, or reading file contents."""
     if not isinstance(value, str) or not value.strip():
@@ -55,7 +64,11 @@ def resolve_target(value: str, *, explicit: bool = False) -> Target:
         _ = parsed.port
         host = parsed.hostname.lower()
         tool = None
-        if not explicit and (host == "reddit.com" or host.endswith(".reddit.com")):
+        if is_onion_host(value):
+            # .onion always needs the Tor bridge, explicit tool or not — a
+            # plain HTTPS client cannot reach it at all.
+            tool = "tor"
+        elif not explicit and (host == "reddit.com" or host.endswith(".reddit.com")):
             tool = "reddit"
         return Target(value, tool, tool is None)
     if parsed.scheme in _SCHEMES:

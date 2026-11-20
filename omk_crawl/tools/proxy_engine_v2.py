@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import random
+import re
 import socket
 import threading
 import time
@@ -93,6 +94,54 @@ TLS_PROFILES = [
     "firefox133",
 ]
 
+
+# ── Plain-HTTP MITM canary ──
+# Free HTTP proxies routinely inject ads, captive portals, or hostile content
+# into unencrypted traffic (HTTPS is end-to-end and cannot be rewritten, so it
+# needs no canary). Each node is probed against a random endpoint from the set,
+# so a hijacker cannot pass by whitelisting one canary domain. A clean fetch
+# must 200 with the expected payload shape; a fake-but-valid-looking body is
+# still possible — see the known limit note in references/routing.md.
+_IP_RE = re.compile(r"^\s*(\d{1,3}\.){3}\d{1,3}\s*$")
+_HTTPBIN_IP_RE = re.compile(r'^\s*\{\s*"origin"\s*:\s*"[\d.,\s:a-fA-F]+"\s*\}\s*$')
+CANARY_TARGETS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("http://icanhazip.com", _IP_RE),
+    ("http://ifconfig.me/ip", _IP_RE),
+    ("http://checkip.amazonaws.com", _IP_RE),
+    ("http://ident.me", _IP_RE),
+    ("http://httpbin.org/ip", _HTTPBIN_IP_RE),
+)
+CANARY_URL = CANARY_TARGETS[0][0]  # default/first canary, kept for callers
+
+# ── Anonymity leak check ──
+# A proxy can serve the canary cleanly and still leak the client IP through
+# X-Forwarded-For / Via / Forwarded / X-Real-IP. After a canary verdict we probe
+# httpbin.org/headers through the node and compare against a direct fetch of the
+# same client's own address. ``anonymity`` becomes a MEASURED value:
+#   transparent — forwarding headers contain our real IP (identity leaked)
+#   anonymous   — proxying is disclosed (headers present) but our IP is hidden,
+#                 or our own IP could not be measured (fail-closed, not elite)
+#   elite       — no forwarding headers at all
+#   unknown     — never probed (fails every min_anonymity gate)
+ANON_CHECK_URL = "http://httpbin.org/headers"
+_FWD_HEADERS = (
+    "x-forwarded-for",
+    "x-real-ip",
+    "forwarded",
+    "via",
+    "x-proxy-id",
+    "x-bluecoat-via",
+)
+# Gate ranking; anything not listed (esp. "unknown") is below every threshold.
+ANONYMITY_RANK = {"transparent": 0, "anonymous": 1, "elite": 2}
+
+
+def _anonymity_ok(node: ProxyNode, minimum: str | None) -> bool:
+    """``True`` when the node's measured anonymity meets the gate."""
+    if minimum is None:
+        return True
+    return ANONYMITY_RANK.get(node.anonymity, -1) >= ANONYMITY_RANK[minimum]
+
 # ── Geo preferences (avoid KR/JP/CN for stealth) ──
 PREFERRED_GEOS = {"US", "DE", "NL", "SE", "CH", "FR", "CA", "SG", "AU", "UK", "FI", "NO"}
 AVOID_GEOS = {"KR", "JP", "CN", "HK", "TW", "RU", "IR", "KP", "IN"}
@@ -105,7 +154,7 @@ class ProxyNode:
     url: str
     protocol: str = "http"  # http, https, socks5, socks4
     country: str = ""
-    anonymity: str = "elite"
+    anonymity: str = "unknown"  # measured: transparent/anonymous/elite; "unknown" until probed
     latency_ms: float = 0.0
     uptime_pct: float = 80.0
     last_validated: float = 0.0
@@ -118,6 +167,7 @@ class ProxyNode:
     tls_profile: str = ""  # assigned TLS fingerprint
     harvested_at: float = 0.0  # last time a source list re-served this proxy
     source: str = ""  # which free list served it
+    integrity: bool | None = None  # None untested / True canary-clean / False tampered
 
     @property
     def is_stale(self) -> bool:
@@ -195,6 +245,7 @@ class ProxyNode:
             "use_count": self.use_count,
             "harvested_at": self.harvested_at,
             "source": self.source,
+            "integrity": self.integrity,
         }
 
     @classmethod
@@ -215,6 +266,7 @@ class ProxyEngineV2:
         self._tls_idx = 0
         self._ipv6_checked = False
         self._ipv6_cache = False
+        self._own_ip: str | None = None
         self._load_cache()
         logger.info(f"ProxyEngine v2 initialized: {len(self._pool)} cached")
 
@@ -476,19 +528,19 @@ class ProxyEngineV2:
                 node.last_validated = time.time()
                 if resp.status == 200:
                     node.mark_success(latency)
-                    return True
+                    return await self._integrity_check(session, node, proxy)
                 elif resp.status == 400:
                     data = await resp.json()
                     msg = data.get("error", {}).get("message", "")
                     if "EMAIL_EXISTS" in msg:
                         # Proxy works! Email just already exists
                         node.mark_success(latency)
-                        return True
+                        return await self._integrity_check(session, node, proxy)
                     elif "TOO_MANY_ATTEMPTS" in msg:
                         # Proxy works but rate limited
                         node.mark_success(latency)
                         node.backoff_until = time.time() + 30
-                        return True
+                        return await self._integrity_check(session, node, proxy)
                     else:
                         node.mark_failure()
                         return False
@@ -505,17 +557,110 @@ class ProxyEngineV2:
                 node.last_validated = time.time()
                 if resp.status == 200:
                     node.mark_success(latency)
-                    return True
+                    return await self._integrity_check(session, node, proxy)
                 node.mark_failure()
                 return False
 
+    async def _integrity_check(
+        self,
+        session: aiohttp.ClientSession,
+        node: ProxyNode,
+        proxy: str | None = None,
+    ) -> bool:
+        """Canary-probe plain-HTTP tampering. A node that rewrites the canary
+        is a proven MITM — burn it. Transport failures leave ``integrity``
+        unknown (None) rather than poisoning a healthy node."""
+        url, expected = random.choice(CANARY_TARGETS)
+        canary_kwargs: dict[str, Any] = {"ssl": False}
+        if proxy:
+            canary_kwargs["proxy"] = proxy
+        try:
+            async with session.get(url, **canary_kwargs) as resp:
+                body = await resp.text()
+        except Exception:
+            node.integrity = None
+            return True
+        await self._anonymity_probe(session, node, canary_kwargs)
+        if resp.status == 200 and expected.match(body):
+            node.integrity = True
+            return True
+        if resp.status == 200:
+            # 200 but wrong body — the classic hijack signature
+            node.integrity = False
+            self.burn(node)
+            logger.info("burned %s — plain-HTTP response tampering", node.url)
+        else:
+            # Non-200 (407 portal, 502, …): no verdict either way
+            node.integrity = None
+        return True
+
+    async def _client_ip(self, session: aiohttp.ClientSession) -> str | None:
+        """Our own IP, fetched direct (cached per engine lifetime)."""
+        if self._own_ip is not None:
+            return self._own_ip
+        try:
+            async with session.get("http://icanhazip.com", ssl=False) as resp:
+                body = (await resp.text()).strip()
+        except Exception:
+            self._own_ip = ""
+            return None
+        self._own_ip = body if _IP_RE.match(body) else ""
+        return self._own_ip or None
+
+    async def _anonymity_probe(
+        self,
+        session: aiohttp.ClientSession,
+        node: ProxyNode,
+        canary_kwargs: dict[str, Any],
+    ) -> None:
+        """Measure the node's anonymity class from reflected request headers.
+
+        ``httpbin.org/headers`` echoes exactly what the origin sees, so any
+        forwarding header the proxy injected shows up. Leaking our real client
+        IP marks the node ``transparent``; merely disclosing that proxying
+        happened is ``anonymous``; no forwarding headers is ``elite``.
+        Failures leave ``anonymity`` unchanged (stays ``unknown`` → gated out).
+        """
+        try:
+            async with session.get(ANON_CHECK_URL, **canary_kwargs) as resp:
+                if resp.status != 200:
+                    return
+                data = json.loads(await resp.text())
+        except Exception:
+            return
+        headers = {str(k).lower(): str(v) for k, v in (data.get("headers") or {}).items()}
+        present = [h for h in _FWD_HEADERS if h in headers]
+        if not present:
+            node.anonymity = "elite"
+            return
+        own = await self._client_ip(session)
+        if own is None:
+            node.anonymity = "anonymous"  # can't prove a leak — never claim elite
+            return
+        leaked = any(own in headers[h] for h in present if h != "via")
+        node.anonymity = "transparent" if leaked else "anonymous"
+        if leaked:
+            logger.warning(
+                "%s leaks client IP via %s — transparent", node.url, ",".join(present)
+            )
+
     # ── Scheduling ──
-    def next(self, exclude: set[str] | None = None, fresh_only: bool = False) -> ProxyNode | None:
+    def next(
+        self,
+        exclude: set[str] | None = None,
+        fresh_only: bool = False,
+        require_integrity: bool = False,
+        min_anonymity: str | None = None,
+    ) -> ProxyNode | None:
         """Get the best available proxy node.
 
         ``fresh_only`` restricts selection to proxies a source re-served (or a
         validation touched) within ``STALE_SECONDS`` — newest-first. Falls
         back to the whole pool when nothing is fresh.
+        ``require_integrity`` restricts selection to canary-clean nodes; use it
+        for ``http://`` targets where a proxy can rewrite the payload.
+        ``min_anonymity`` ("anonymous" or "elite") drops nodes whose measured
+        ``anonymity`` ranks below it — unprobed nodes count as the lowest rank.
         """
         with self._lock:
             available = [
@@ -524,6 +669,8 @@ class ProxyEngineV2:
                 if n.is_available
                 and self._hash(n.url) not in self._burned
                 and (exclude is None or n.url not in exclude)
+                and (not require_integrity or n.integrity is True)
+                and _anonymity_ok(n, min_anonymity)
             ]
             if fresh_only:
                 fresh = [n for n in available if not n.is_stale]
@@ -535,7 +682,13 @@ class ProxyEngineV2:
                     if self._hash(n.url) not in self._burned:
                         n.use_count = 0
                         n.backoff_until = 0
-                available = [n for n in self._pool if self._hash(n.url) not in self._burned]
+                available = [
+                    n
+                    for n in self._pool
+                    if self._hash(n.url) not in self._burned
+                    and (not require_integrity or n.integrity is True)
+                    and _anonymity_ok(n, min_anonymity)
+                ]
 
             if not available:
                 return None

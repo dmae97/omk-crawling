@@ -2,12 +2,67 @@
 
 ## [Unreleased]
 
+### Added
+- **측정 기반 프록시 익명성** (`tools/proxy_engine_v2.py`, `rotate_crawl.py`) — 카나리 통과가 곧 익명은 아니다. 평문 http 카나리 통과 직후 `http://httpbin.org/headers`를 노드 경유로 가져와 반사된 포워딩 헤더를 직접 측정한 클라이언트 IP와 비교한다: `transparent`(X-Forwarded-For/Forwarded/X-Real-IP 등에 실제 IP 누출), `anonymous`(프록시 사실만 노출), `elite`(포워딩 헤더 전무), `unknown`(미측정 — fail-closed로 모든 anonymity 게이트 탈락). `RotationCrawler` 기본 `min_anonymity="anonymous"` — 풀 크롤링이 더는 투명 프록시에 당신의 IP를 넘기지 않는다(라이브 증거: 카나리 "clean" 샘플 2개가 httpbin `origin`에 클라이언트 IP 누출). `OMK_PROXY_MIN_ANONYMITY=elite|anonymous|off` 또는 생성자/엔진 `min_anonymity` 인자로 하한을 조정하고, 측정된 등급은 풀 캐시에 영속한다.
+
+
+- `.onion` targets resolve to a new `tor` tool (`omk_crawl/tools/tor_tool.py`):
+  `curl_cffi` through the Tor SOCKS5 bridge (`socks5h`, remote DNS), default
+  `socks5h://127.0.0.1:9050`, override via `--tor-proxy` or `OMK_TOR_PROXY`
+  (use `9150` for Tor Browser). The tool is pinned — no escalation past it —
+  and unreachable bridges return an actionable error. `tor` also works as an
+  explicit `--tool` for clearnet anonymized fetches.
+- `--deep` and `--proxy-pool` now compose: BFS traversal runs through
+- `--deep` and `--proxy-pool` now compose: BFS traversal runs through
+  `RotationCrawler`, so every page rotates a validated free proxy.
+- Proxy pool nodes carry an `integrity` field (None/True/False, persisted in
+  the cache): during validation a canary request checks whether the proxy
+  rewrites the plaintext body. Status-200 but wrong payload = HTTP hijack,
+  the node is burned. Transport failures stay None — they only mean
+  reachability, not cleanliness. The canary endpoint rotates per check across
+  `CANARY_TARGETS` (icanhazip.com, ifconfig.me, checkip.amazonaws.com,
+  ident.me, httpbin.org/ip) so a hijacker cannot pass by whitelisting one
+  domain.
+- `--proxy-pool` on a `.onion` target bypasses the pool entirely and fetches
+  through `TorTool` — HTTP proxies cannot resolve onion services.
+- `--deep` on an `.onion` host fetches `robots.txt` over Tor; clearnet
+  urllib can never resolve `.onion`.
+
+  Verified live: `check.torproject.org` confirms the bridge, DuckDuckGo's
+  onion returned 222 KB through `TorTool`, `--deep` honoured its
+  `Disallow: /` robots (over Tor) and crawled 2 pages / 66 links with
+  `--no-robots`. The rotating canary was smoke-tested against 25 live
+  public proxies (2 clean, rest dead) plus a local 200-rewriting MITM
+  proxy — the hijacker burned (`integrity=False`), no false positives.
 ### Fixed
+
 
 - Cross-platform TCP tests no longer assume `TCP_MAXSEG` is writable on every
   kernel. MSS results are checked against a native socket probe, while rejected
   options must still retain their error and keep the emulation report unsuccessful.
 
+### Changed
+
+- Deep crawl link extraction (`omk_crawl/deep.py`) reaches beyond `<a href>`:
+  `<link rel=canonical|next|prev|alternate|amphtml|index>`, `<iframe>`/`<frame>
+  src`, `<meta http-equiv=refresh>` targets and `"url"`/`"mainEntityOfPage"`
+  values in JSON-LD scripts join the frontier. `<base href>` is honoured as
+  the join base. Still zero-dependency (`html.parser` + regex).
+- `normalize_url` canonicalizes the query: params sort alphabetically and
+  common tracking params (`utm_*`, `gclid`, `fbclid`, `msclkid`, `mc_*`,
+  `ref_src`, `spm`, `_ga`…) are dropped, so campaign URL variants collapse
+  into one frontier entry and the page budget buys distinct content.
+
+### Tests
+
+- 7 new cases in `tests/test_deep.py` covering the extended link sources,
+  `<base>` joining, JSON-LD extraction and query canonicalization
+  (deep suite 22 → 29).
+- 5 new cases in `tests/test_tor.py` covering .onion routing, proxy source
+  precedence, and bridge-down error handling.
+- 12 new cases in `tests/test_proxy_integrity.py` covering the integrity field,
+  `require_integrity` filtering in `engine.next`, canary outcome mapping, and
+  RotationCrawler's http-vs-https gating (full suite 742 passing).
 ## [2.16.0] — 2026-10-21
 
 The free-proxy rotation chain: harvest from public lists → validate → rotate

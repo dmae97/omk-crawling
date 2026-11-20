@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from omk_crawl.result import CrawlResult, CrawlStatus
+from omk_crawl.targets import is_onion_host
 
 logger = logging.getLogger("omk_crawl.rotate")
 
@@ -84,6 +87,7 @@ class RotationCrawler:
         attempts_per_url: int = 4,
         timeout: float = 15.0,
         auto_refill: bool = True,
+        min_anonymity: str | None = None,
     ) -> None:
         if attempts_per_url < 1:
             raise ValueError("attempts_per_url must be >= 1")
@@ -92,6 +96,17 @@ class RotationCrawler:
         self.attempts_per_url = attempts_per_url
         self.timeout = timeout
         self.auto_refill = auto_refill
+        # Security default: measured transparent (client-IP-leaking) proxies are
+        # dropped — pool users opted into anonymity. OMK_PROXY_MIN_ANONYMITY:
+        #   "elite"     — forwarding headers must be fully absent
+        #   "anonymous" — (default) headers may disclose proxying, not the IP
+        #   "off"/"any" — permissive legacy behaviour, accept transparent too
+        env_anon = os.environ.get("OMK_PROXY_MIN_ANONYMITY", "anonymous").strip().lower()
+        self.min_anonymity = (
+            min_anonymity
+            if min_anonymity is not None
+            else (None if env_anon in ("off", "any", "transparent") else env_anon)
+        )
         self.stats = RotationStats()
         self._mark_lock = threading.Lock()
         self._engine_lock = threading.Lock()
@@ -172,14 +187,40 @@ class RotationCrawler:
         last: CrawlResult | None = None
 
         self.stats.requests += 1
+        # .onion cannot ride HTTP proxies at all — the Tor bridge is the only
+        # transport that resolves it. Bypass the pool for onion targets.
+        if is_onion_host(url):
+            from omk_crawl.tools.tor_tool import TorTool
+
+            result = TorTool().fetch(url, **request_kwargs)
+            if result.ok:
+                self.stats.ok += 1
+            else:
+                self.stats.failed += 1
+            result.metadata.setdefault("rotation", {})
+            result.metadata["rotation"] = {"attempts": 0, "proxies": [], "last_outcome": "tor"}
+            return result
+        # Plain-HTTP payloads can be rewritten by a malicious proxy (real smoke:
+        # a free node served a CyberPanel portal for a localhost URL). HTTPS is
+        # end-to-end so the canary gate only applies to http targets.
+        require_integrity = urlsplit(url).scheme == "http"
+
         for attempt in range(1, self.attempts_per_url + 1):
             with self._engine_lock:
-                node = engine.next(exclude=set(used) if used else None)
+                node = engine.next(
+                    exclude=set(used) if used else None,
+                    require_integrity=require_integrity,
+                    min_anonymity=self.min_anonymity,
+                )
             if node is None:
                 self.stats.exhausted_pool += 1
                 if self.auto_refill and self._sync_refill():
                     with self._engine_lock:
-                        node = engine.next(exclude=set(used) if used else None)
+                        node = engine.next(
+                            exclude=set(used) if used else None,
+                            require_integrity=require_integrity,
+                            min_anonymity=self.min_anonymity,
+                        )
                 if node is None:
                     logger.warning("Proxy pool exhausted for %s", url)
                     break

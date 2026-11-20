@@ -250,6 +250,14 @@ def build_parser() -> argparse.ArgumentParser:
             "(mutually exclusive with --tool)"
         ),
     )
+    parser.add_argument(
+        "--tor-proxy",
+        metavar="URL",
+        help=(
+            "SOCKS bridge for .onion targets "
+            "(default socks5h://127.0.0.1:9050; env OMK_TOR_PROXY)"
+        ),
+    )
     parser.add_argument("--tools", action="store_true", help="List installed/missing tools")
     parser.add_argument(
         "--star",
@@ -310,12 +318,26 @@ def _main(argv: list[str] | None = None) -> int:
         if target_tool != "har" or not args.json:
             parser.error("--har-bodies requires a local HAR input (or --tool har) and --json")
         tool_kwargs["include_bodies"] = True
+    if args.tor_proxy is not None:
+        tool_kwargs["tor_proxy"] = args.tor_proxy
+    # Deep crawls call router.crawl(url) with no per-call kwargs, so the shared
+    # timeout / tor_proxy live on the router and apply inside --deep too.
+    router.tool_kwargs.update(tool_kwargs)
+
     if args.evasion:
         return _print_evasion(target, as_json=args.json)
 
     if args.diagnose:
         print(json.dumps(router.diagnose(target, **tool_kwargs), indent=2))
         return 0
+
+    pool_crawler = None
+    if args.proxy_pool:
+        if args.tool:
+            parser.error("--proxy-pool and --tool are mutually exclusive")
+        from omk_crawl.rotate_crawl import RotationCrawler
+
+        pool_crawler = RotationCrawler()
 
     if args.deep:
         from omk_crawl.deep import DeepCrawlConfig, deep_crawl
@@ -332,16 +354,11 @@ def _main(argv: list[str] | None = None) -> int:
             )
         except ValueError as error:
             parser.error(str(error))
-        crawl_result = deep_crawl(target, config=config, router=router)
+        crawl_result = deep_crawl(target, config=config, router=pool_crawler or router)
         _print_deep_result(crawl_result, as_json=args.json, output=args.output)
         return 0 if crawl_result.stats.pages_ok else 1
 
-    if args.proxy_pool:
-        if args.tool:
-            parser.error("--proxy-pool and --tool are mutually exclusive")
-        from omk_crawl.rotate_crawl import RotationCrawler
-
-        pool_crawler = RotationCrawler()
+    if args.proxy_pool and pool_crawler is not None:
         pool_result = pool_crawler.crawl(target)
         if args.verbose:
             rotation = pool_result.metadata.get("rotation", {})

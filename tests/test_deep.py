@@ -88,6 +88,64 @@ class TestExtractLinks:
         assert extract_links("<a href='/x", SEED) == []
 
 
+
+    def test_extended_sources(self):
+        html = (
+            '<link rel="canonical" href="https://x.com/canon">'
+            '<link rel="next" href="/page/2">'
+            '<link rel="stylesheet" href="/app.css">'  # asset rel ignored
+            '<iframe src="/embed/chat"></iframe>'
+            '<meta http-equiv="refresh" content="0; url=/landing">'
+            '<a href="/a">a</a>'
+        )
+        links = extract_links(html, SEED)
+        assert links == [
+            "https://x.com/canon",
+            "https://x.com/page/2",
+            "https://x.com/embed/chat",
+            "https://x.com/landing",
+            "https://x.com/a",
+        ]
+
+    def test_base_href_join(self):
+        html = '<base href="https://cdn.x.com/docs/"><a href="page.html">p</a>'
+        assert extract_links(html, SEED) == ["https://cdn.x.com/docs/page.html"]
+
+    def test_jsonld_urls(self):
+        html = (
+            '<script type="application/ld+json">'
+            '{"@type":"Article","url":"https:\\/\\/x.com\\/post\\/1",'
+            '"mainEntityOfPage":"https://x.com/post/1"}'
+            "</script>"
+        )
+        assert extract_links(html, SEED) == ["https://x.com/post/1"]
+
+    def test_script_non_jsonld_ignored(self):
+        html = '<script>var u="https://x.com/js-only";</script>'
+        assert extract_links(html, SEED) == []
+
+
+class TestCanonicalQuery:
+    def test_tracking_params_dropped(self):
+        assert normalize_url("https://x.com/p?utm_source=a&gclid=g&id=1") == "https://x.com/p?id=1"
+        assert normalize_url("https://x.com/p?utm_campaign=x") == "https://x.com/p"
+
+    def test_params_sorted(self):
+        assert normalize_url("https://x.com/p?b=2&a=1") == "https://x.com/p?a=1&b=2"
+
+    def test_variants_collapse_to_one_frontier_entry(self, monkeypatch):
+        pages = {
+            SEED: ok_page(
+                SEED,
+                '<a href="/p?r=1">1</a>'
+                '<a href="/p?utm_source=x&r=1">2</a>'
+                '<a href="/p?r=1&utm_campaign=y">3</a>',
+            ),
+            "https://x.com/p?r=1": ok_page("https://x.com/p?r=1"),
+        }
+        install_pages(monkeypatch, pages)
+        result = deep_crawl(SEED, DeepCrawlConfig(max_depth=1), router=make_router())
+        assert [p.url for p in result.pages] == [SEED, "https://x.com/p?r=1"]
 class TestCrawlableAndScope:
     def test_assets_excluded(self):
         for url in (
